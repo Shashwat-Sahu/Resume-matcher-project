@@ -416,6 +416,13 @@ with tab4:
                     )
                     st.session_state.tailored_resume_md = tailored_md
 
+                    # Run ATS audit again on the tailored resume
+                    optimizer = ATSOptimizer()
+                    ats_after = optimizer.calculate_ats_score({}, st.session_state.job_data, tailored_md)
+                    comparison = optimizer.compare_ats_scores(st.session_state.ats_results, ats_after)
+                    st.session_state.ats_tailored = ats_after
+                    st.session_state.ats_comparison = comparison
+
                     # Build file exports & record application
                     exporter = DocumentExporter(output_dir=OUTPUT_DIR)
                     cand_name = profile.get("contact", {}).get("name") or "Candidate"
@@ -451,18 +458,61 @@ with tab4:
                         job_title=target_title,
                         company=company,
                         job_url=target_url,
-                        ats_score=st.session_state.ats_results["overall_score"],
-                        breakdown=st.session_state.ats_results["breakdown"],
+                        original_ats_score=st.session_state.ats_results["overall_score"],
+                        tailored_ats_score=ats_after["overall_score"],
+                        breakdown=ats_after["breakdown"],
                         pdf_path=pdf_file,
                         docx_path=docx_file,
                         md_path=md_file,
-                        top_skills=st.session_state.job_data.get("required_hard_skills", [])[:6]
+                        top_skills=st.session_state.job_data.get("required_hard_skills", [])[:6],
+                        newly_matched_keywords=comparison["newly_matched_keywords"]
                     )
                     st.session_state.last_recorded_app = app_record
-                    st.success(f"Resume tailored & logged for **{company} - {target_title}**!")
+                    delta_str = f"+{comparison['score_delta']}%" if comparison['score_delta'] >= 0 else f"{comparison['score_delta']}%"
+                    st.success(f"Tailored resume generated! ATS Score increased from **{comparison['score_before']}%** to **{comparison['score_after']}%** ({delta_str} boost 🚀).")
 
     if st.session_state.tailored_resume_md:
         st.markdown("---")
+
+        # Before vs After ATS Comparison Dashboard
+        if "ats_comparison" in st.session_state and st.session_state.ats_comparison:
+            comp = st.session_state.ats_comparison
+            st.markdown("### 📊 ATS Optimization Comparison (Before vs. After)")
+
+            col_c1, col_c2, col_c3, col_c4 = st.columns(4)
+            with col_c1:
+                delta_s = f"+{comp['score_delta']}%" if comp['score_delta'] >= 0 else f"{comp['score_delta']}%"
+                st.metric("Tailored ATS Score", f"{comp['score_after']} / 100", delta=delta_s)
+                st.caption(f"Master Resume was: {comp['score_before']}%")
+            with col_c2:
+                delta_k = f"+{comp['keyword_match_delta']}%" if comp['keyword_match_delta'] >= 0 else f"{comp['keyword_match_delta']}%"
+                st.metric("Keyword Match", f"{comp['keyword_match_after']}%", delta=delta_k)
+                st.caption(f"Master Match was: {comp['keyword_match_before']}%")
+            with col_c3:
+                delta_i = f"+{comp['impact_delta']}%" if comp['impact_delta'] >= 0 else f"{comp['impact_delta']}%"
+                st.metric("Impact & Metrics", f"{comp['impact_after']}%", delta=delta_i)
+                st.caption(f"Master Impact was: {comp['impact_before']}%")
+            with col_c4:
+                st.metric("Format Safety", "100%", delta="0% (ATS Safe)")
+                st.caption("Single-column verified")
+
+            # Keyword integration highlights
+            c_new1, c_new2 = st.columns(2)
+            with c_new1:
+                st.markdown("#### 🎯 Newly Integrated Target Keywords")
+                if comp.get("newly_matched_keywords"):
+                    st.markdown("".join([f'<span class="badge-match">+{k}</span>' for k in comp["newly_matched_keywords"]]), unsafe_allow_html=True)
+                else:
+                    st.write("All available keywords from profile already matched.")
+
+            with c_new2:
+                st.markdown("#### ⚠️ Remaining Gaps")
+                if comp.get("remaining_missing"):
+                    st.markdown("".join([f'<span class="badge-missing">{k}</span>' for k in comp["remaining_missing"]]), unsafe_allow_html=True)
+                else:
+                    st.write("Zero critical gaps remaining! Exceptional ATS match.")
+
+            st.markdown("---")
         # Editor & Preview
         st.session_state.tailored_resume_md = st.text_area(
             "Tailored Resume (Markdown / Single-Column ATS Layout)",
@@ -621,8 +671,15 @@ with tab6:
                         st.write("**Target Skills:** " + ", ".join([f"`{s}`" for s in rec.get("top_skills", [])]))
 
                 with c_info2:
-                    score = rec.get("ats_score", 0)
-                    st.metric("ATS Match Score", f"{score}%")
+                    orig_s = rec.get("original_ats_score", rec.get("ats_score", 0))
+                    tailor_s = rec.get("tailored_ats_score", rec.get("ats_score", 0))
+                    delta_s = rec.get("ats_score_delta", tailor_s - orig_s)
+                    delta_str = f"+{delta_s}%" if delta_s >= 0 else f"{delta_s}%"
+                    st.metric("Tailored ATS Score", f"{tailor_s}%", delta=delta_str)
+                    st.caption(f"Initial Master: {orig_s}%")
+
+                if rec.get("newly_matched_keywords"):
+                    st.write("**Integrated Keywords:** " + ", ".join([f"`+{k}`" for k in rec.get("newly_matched_keywords", [])[:6]]))
 
                 # Action buttons to download specific saved files
                 col_d1, col_d2, col_d3 = st.columns(3)

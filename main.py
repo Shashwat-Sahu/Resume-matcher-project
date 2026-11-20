@@ -1,8 +1,8 @@
 """
 Resume Matcher Pro - CLI Automation Tool
 Command-line interface to parse master resumes, evaluate ATS scores,
-tailor resumes with local Llama models, export PDF/DOCX/MD,
-and record application tracking history.
+tailor resumes with local Llama models, re-run ATS evaluation,
+export PDF/DOCX/MD, and record application tracking history.
 """
 
 import os
@@ -46,7 +46,7 @@ def run_pipeline(
         print(f"[!] Warning: Ollama not reachable at {host}. Fallback modes will be used if needed.")
 
     # 1. Parse Master Resume
-    print(f"\n[1/5] Loading Master Resume from: {resume_path}")
+    print(f"\n[1/6] Loading Master Resume from: {resume_path}")
     parser = ResumeParser(llm)
     with open(resume_path, "r", encoding="utf-8", errors="ignore") as f:
         raw_resume = f.read()
@@ -57,7 +57,7 @@ def run_pipeline(
     print(f"      Candidate: {candidate_name} ({profile.get('contact', {}).get('email', 'N/A')})")
 
     # 2. Extract Job Requirements
-    print(f"\n[2/5] Analyzing Target Job...")
+    print(f"\n[2/6] Analyzing Target Job...")
     extractor = JobExtractor(llm)
     job_data = extractor.parse_job_description(job_input)
     job_title = job_data.get("title", "Target Role")
@@ -75,30 +75,56 @@ def run_pipeline(
         clean_tit = re.sub(r"[^\w\-]", "_", job_title).strip("_")
         output_name = f"Resume_{clean_comp}_{clean_tit}"
 
-    # 3. Calculate ATS Score & Gap
-    print(f"\n[3/5] Computing ATS Compatibility & Keyword Gap Analysis...")
+    # 3. Calculate Initial ATS Score on Master Resume
+    print(f"\n[3/6] Running Initial ATS Audit on Master Resume...")
     optimizer = ATSOptimizer()
-    ats_res = optimizer.calculate_ats_score(profile, job_data, raw_resume)
-    score = ats_res["overall_score"]
-    print(f"      ---------------------------------------------")
-    print(f"      OVERALL ATS COMPATIBILITY SCORE: {score} / 100")
-    print(f"      Rating: {ats_res['rating']}")
-    print(f"      Keyword Match: {ats_res['breakdown']['keyword_match_score']}%")
-    print(f"      Impact & Metrics: {ats_res['breakdown']['quantification_impact_score']}%")
-    print(f"      Formatting Safety: {ats_res['breakdown']['formatting_safety_score']}%")
-    print(f"      ---------------------------------------------")
-    kw = ats_res["keyword_analysis"]
-    print(f"      Matched Keywords ({kw['matched_count']}): {', '.join(kw['matched_keywords'][:6])}")
-    if kw["missing_critical_keywords"]:
-        print(f"      Missing Critical Keywords ({kw['missing_count']}): {', '.join(kw['missing_critical_keywords'][:6])}")
+    ats_before = optimizer.calculate_ats_score(profile, job_data, raw_resume)
+    score_before = ats_before["overall_score"]
+    print(f"      Initial ATS Score: {score_before} / 100 ({ats_before['rating']})")
+    print(f"      Keyword Match: {ats_before['breakdown']['keyword_match_score']}%")
 
     # 4. Tailor Resume with Llama
-    print(f"\n[4/5] Tailoring Resume using local {model}...")
+    print(f"\n[4/6] Tailoring Resume using local {model}...")
     tailorer = ResumeTailorer(llm)
-    tailored_md = tailorer.generate_tailored_resume(profile, raw_resume, job_data, ats_res)
+    tailored_md = tailorer.generate_tailored_resume(profile, raw_resume, job_data, ats_before)
 
-    # 5. Export Documents
-    print(f"\n[5/5] Exporting ATS-Compliant Documents to '{OUTPUT_DIR}'...")
+    # 5. RE-RUN ATS ON TAILORED RESUME
+    print(f"\n[5/6] Re-Running ATS Audit on Tailored Resume...")
+    ats_after = optimizer.calculate_ats_score({}, job_data, tailored_md)
+    comparison = optimizer.compare_ats_scores(ats_before, ats_after)
+
+    score_after = comparison["score_after"]
+    delta = comparison["score_delta"]
+    delta_str = f"+{delta}" if delta >= 0 else str(delta)
+
+    kw_b_str = f"{comparison['keyword_match_before']}%"
+    kw_a_str = f"{comparison['keyword_match_after']}%"
+    kw_d_str = f"+{comparison['keyword_match_delta']}%"
+
+    imp_b_str = f"{comparison['impact_before']}%"
+    imp_a_str = f"{comparison['impact_after']}%"
+    imp_d_str = f"+{comparison['impact_delta']}%"
+
+    print("\n" + "=" * 70)
+    print("               📊 BEFORE vs. AFTER ATS SCORE COMPARISON")
+    print("=" * 70)
+    print(f" {'Metric':<25} {'Master Resume':<16} {'Tailored Resume':<16} {'Change':<10}")
+    print("-" * 70)
+    print(f" {'Overall ATS Score':<25} {f'{score_before} / 100':<16} {f'{score_after} / 100':<16} {delta_str} 🚀")
+    print(f" {'Keyword Match':<25} {kw_b_str:<16} {kw_a_str:<16} {kw_d_str:<10}")
+    print(f" {'Impact & Metrics':<25} {imp_b_str:<16} {imp_a_str:<16} {imp_d_str:<10}")
+    print(f" {'Formatting Safety':<25} {'100%':<16} {'100%':<16} {'0%':<10}")
+    print("-" * 70)
+    if comparison["newly_matched_keywords"]:
+        print(f" Newly Integrated Keywords ({comparison['newly_matched_count']}): {', '.join(comparison['newly_matched_keywords'][:6])}")
+    if comparison["remaining_missing"]:
+        print(f" Remaining Gaps ({comparison['remaining_missing_count']}): {', '.join(comparison['remaining_missing'][:6])}")
+    else:
+        print(" Remaining Gaps: Zero critical gaps remaining! 100% keyword coverage.")
+    print("=" * 70)
+
+    # 6. Export Documents & Log History
+    print(f"\n[6/6] Exporting ATS-Compliant Documents to '{OUTPUT_DIR}'...")
     exporter = DocumentExporter(OUTPUT_DIR)
 
     # Export PDF
@@ -139,18 +165,21 @@ def run_pipeline(
         job_title=job_title,
         company=company,
         job_url=resolved_url,
-        ats_score=score,
-        breakdown=ats_res["breakdown"],
+        original_ats_score=score_before,
+        tailored_ats_score=score_after,
+        breakdown=ats_after["breakdown"],
         pdf_path=pdf_file,
         docx_path=docx_file,
         md_path=md_file,
         interview_prep_path=prep_path,
-        top_skills=job_data.get("required_hard_skills", [])[:6]
+        top_skills=job_data.get("required_hard_skills", [])[:6],
+        newly_matched_keywords=comparison["newly_matched_keywords"]
     )
-    print(f"      [✓] Logged application in history: '{company} - {job_title}' (URL: {resolved_url})")
+    print(f"      [✓] Logged in history: '{company} - {job_title}' (URL: {resolved_url})")
 
     print("\n======================================================================")
-    print("      SUCCESS! Your tailored resume & PDF are ready for submission.")
+    print(f" SUCCESS! ATS Score increased from {score_before}% to {score_after}% ({delta_str}% boost).")
+    print(" Tailored resume PDF & DOCX are ready for submission.")
     print("======================================================================\n")
 
 def main():

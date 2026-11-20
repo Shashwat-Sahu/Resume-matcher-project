@@ -3,8 +3,8 @@ Application Tracker Module.
 Maintains a persistent record of all tailored resumes generated:
 - Target Job Title & Company
 - Target Job URL (or source)
-- Generation timestamp
-- ATS score and keyword gap metrics
+- Before & After ATS Scores and improvement delta
+- Newly matched keywords
 - Generated file artifacts (PDF, DOCX, Markdown, Interview Prep JSON)
 """
 
@@ -40,13 +40,15 @@ class ApplicationTracker:
         job_title: str,
         company: str,
         job_url: str,
-        ats_score: int,
+        original_ats_score: int,
+        tailored_ats_score: int,
         breakdown: Dict[str, Any],
         pdf_path: str,
         docx_path: str,
         md_path: str,
         interview_prep_path: Optional[str] = None,
-        top_skills: Optional[List[str]] = None
+        top_skills: Optional[List[str]] = None,
+        newly_matched_keywords: Optional[List[str]] = None
     ) -> Dict[str, Any]:
         """
         Records a newly generated tailored resume application into history.
@@ -54,10 +56,11 @@ class ApplicationTracker:
         history = self.load_history()
         now = datetime.now()
 
-        # Sanitize name and company for slugs
         clean_company = re.sub(r"[^\w\-]", "_", company or "Company").strip("_")
         clean_title = re.sub(r"[^\w\-]", "_", job_title or "Role").strip("_")
         entry_id = f"{now.strftime('%Y%m%d_%H%M%S')}_{clean_company}_{clean_title}"
+
+        delta = tailored_ats_score - original_ats_score
 
         record = {
             "id": entry_id,
@@ -66,9 +69,12 @@ class ApplicationTracker:
             "job_title": job_title or "Target Role",
             "company": company or "Target Company",
             "job_url": job_url or "Direct Text Input",
-            "ats_score": ats_score,
+            "original_ats_score": original_ats_score,
+            "tailored_ats_score": tailored_ats_score,
+            "ats_score_delta": delta,
             "breakdown": breakdown or {},
             "top_skills": top_skills or [],
+            "newly_matched_keywords": newly_matched_keywords or [],
             "files": {
                 "pdf": pdf_path,
                 "docx": docx_path,
@@ -77,7 +83,7 @@ class ApplicationTracker:
             }
         }
 
-        # Prepend to show latest first
+        # Prepend latest first
         history.insert(0, record)
 
         with open(self.history_file, "w", encoding="utf-8") as f:
