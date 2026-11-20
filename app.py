@@ -253,34 +253,33 @@ with tab2:
                         st.error(f"Error fetching job: {e}")
 
     else:
-        st.write("Search live job openings across company career pages and ATS job boards matching your profile.")
-        col_s1, col_s2, col_s3 = st.columns([2, 1, 1])
+        st.write("Search for **individual job requisition postings** (Greenhouse, Lever, Workday, Ashby) matching your profile.")
+        col_s1, col_s2, col_s3 = st.columns([2, 1, 1.2])
         with col_s1:
             search_title = st.text_input("Target Role Title", value="Software Developer")
         with col_s2:
             search_loc = st.text_input("Location / City", value="Bengaluru")
         with col_s3:
-            search_portal = st.selectbox("Target Board", ["All Sources", "Greenhouse", "Lever", "LinkedIn", "Indeed"])
+            search_portal = st.selectbox(
+                "Target ATS Board",
+                ["All Sources", "Lever", "Workday", "Greenhouse", "Ashby", "LinkedIn (Single View)"],
+                help="Filters specifically for individual job postings rather than search result directory aggregators."
+            )
 
         if st.button("Search Matching Openings", type="primary"):
-            with st.spinner("Searching job boards for matching openings..."):
+            with st.spinner(f"Searching individual {search_portal} job postings for '{search_title}' in {search_loc}..."):
                 searcher = JobSearcher()
-                portal_filter = ""
-                if search_portal == "Greenhouse":
-                    portal_filter = "greenhouse"
-                elif search_portal == "Lever":
-                    portal_filter = "lever"
-                elif search_portal == "LinkedIn":
-                    portal_filter = "linkedin"
-                elif search_portal == "Indeed":
-                    portal_filter = "indeed"
-
-                query_str = f"{search_title} {search_loc} {portal_filter}".strip()
-                results = searcher.search_jobs(query_str, max_results=6)
+                results = searcher.search_individual_jobs(
+                    role=search_title,
+                    location=search_loc,
+                    target_board=search_portal,
+                    max_results=6
+                )
                 st.session_state.search_results = results
 
         if "search_results" in st.session_state and st.session_state.search_results:
-            st.markdown("### Matching Opportunities Found:")
+            st.markdown("### 🎯 Individual Job Postings Found:")
+            st.caption("Each listing below is an individual job opening with its own specific requirements and responsibilities.")
             for i, res in enumerate(st.session_state.search_results):
                 with st.container():
                     st.markdown(f"**{res['title']}** ({res.get('source', 'Job Board')})")
