@@ -1,0 +1,27 @@
+Role: Staff / Senior Cloud Platform Engineer
+Company: NovaTech Solutions
+Location: Remote / San Francisco, CA
+
+About the Role:
+NovaTech is looking for a Senior/Staff Cloud Platform Engineer to spearhead our next-generation cloud infrastructure and microservices ecosystem. You will be responsible for scaling our distributed backend systems, hardening our Kubernetes clusters, and driving developer velocity across our global engineering organization.
+
+Key Responsibilities:
+- Design, scale, and maintain high-throughput backend services using Python, Go, and PostgreSQL.
+- Build and optimize multi-region Kubernetes (EKS) clusters and cloud infrastructure with Terraform on AWS.
+- Implement robust CI/CD pipelines, automated testing, and zero-downtime canary deployment strategies.
+- Drive observability and reliability initiatives across microservices using Prometheus, Grafana, and OpenTelemetry.
+- Collaborate closely with product, security, and data teams to deliver high-availability distributed systems.
+
+Qualifications & Requirements:
+- 5+ years of software engineering experience in cloud-native production environments.
+- Strong proficiency in Python or Go, with deep understanding of concurrency, data structures, and asynchronous programming.
+- Hands-on expertise with AWS cloud services (EKS, EC2, RDS, S3, IAM, CloudWatch).
+- Deep experience with container orchestration: Docker, Kubernetes, Helm charts, and service meshes.
+- Strong background with relational databases (PostgreSQL) and distributed caching (Redis).
+- Proven track record with CI/CD automation (GitHub Actions, ArgoCD) and Infrastructure as Code (Terraform).
+- Excellent communication skills and passion for mentoring engineers and writing clean, maintainable documentation.
+
+Nice to Have:
+- Experience with Apache Kafka or event-driven streaming architectures.
+- Familiarity with SOC 2, ISO 27001, or enterprise cloud security standards.
+- AWS or CKA certifications.
