@@ -1,9 +1,9 @@
 """
 Job Searcher module.
-Searches the web for individual, specific job requisition postings
-(hosted on Greenhouse, Lever, Workday, Ashby, and LinkedIn single-view).
-Matches and ranks opportunities against the candidate's actual master profile,
-calculating real-time skill overlap and relevance scores.
+Searches the web strictly for individual, standalone job requisition postings
+hosted on Workday, Lever, Greenhouse, Ashby, and LinkedIn (single-view).
+Strictly validates URLs to guarantee that company career homepages, search portals,
+and directory aggregators are 100% excluded.
 """
 
 import re
@@ -43,15 +43,13 @@ class JobSearcher:
         elif isinstance(skills_obj, list):
             skills = skills_obj
 
-        # Derive title from most recent experience or summary
         recent_title = "Software Engineer"
         for exp in candidate_profile.get("experience", []):
             if isinstance(exp, dict) and exp.get("title"):
                 recent_title = exp.get("title")
                 break
 
-        # Filter top technical skills
-        top_tech = [s for s in skills if len(s) > 1 and s.lower() not in ["agile", "scrum", "git", "bash", "communication"]]
+        top_tech = [s for s in skills if len(s) > 1 and s.lower() not in ["agile", "scrum", "git", "bash", "communication", "sql"]]
 
         return {
             "recommended_title": recent_title,
@@ -70,30 +68,25 @@ class JobSearcher:
     ) -> List[Dict[str, Any]]:
         """
         Searches ATS boards for individual postings matching candidate's profile.
-        Ranks and scores each retrieved job by skill alignment with the candidate.
+        Ranks each retrieved job by skill alignment with the candidate.
         """
         anchors = self.extract_profile_anchors(candidate_profile)
         search_role = role or anchors["recommended_title"]
-        selected_anchor = anchor_skill or (anchors["anchor_skills"][0] if anchors["anchor_skills"] else "")
 
         raw_jobs = self.search_individual_jobs(
             role=search_role,
             location=location,
             target_board=target_board,
-            anchor_skill=selected_anchor,
-            max_results=max_results * 2  # Fetch extra to score and rank top matches
+            anchor_skill=anchor_skill,
+            max_results=max_results * 2
         )
 
-        # Score and rank each job against candidate's profile
         scored_jobs = []
         for job in raw_jobs:
             score_meta = self.score_job_against_profile(job, candidate_profile)
             job.update(score_meta)
-            # Only keep jobs with at least moderate alignment
-            if job["match_score"] >= 35 or not scored_jobs:
-                scored_jobs.append(job)
+            scored_jobs.append(job)
 
-        # Sort descending by match score
         scored_jobs.sort(key=lambda x: x["match_score"], reverse=True)
         return scored_jobs[:max_results]
 
@@ -103,46 +96,56 @@ class JobSearcher:
         location: str = "",
         target_board: str = "All Sources",
         anchor_skill: str = "",
-        max_results: int = 8
+        max_results: int = 6
     ) -> List[Dict[str, str]]:
         """
-        Queries specific ATS boards (Greenhouse, Lever, Workday, Ashby) for
-        individual, standalone job postings.
+        Queries specific ATS boards (Workday, Lever, Greenhouse, Ashby) using exact
+        requisition-targeting queries to return individual postings only.
         """
         clean_role = re.sub(r"[^\w\s\+\#]", " ", role).strip()
         loc_clause = f'"{location.strip()}"' if location.strip() else ""
         skill_clause = f'"{anchor_skill.strip()}"' if anchor_skill.strip() else ""
 
+        # Formulate precise queries that force search engines to return specific job requisitions
+        # For Workday: require 'Job Description' to bypass company portal landing pages
+        # For Greenhouse: require '/jobs/' in query
         board_queries = []
 
         if target_board == "Lever":
             board_queries = [
                 ("Lever", f'"{clean_role}" {skill_clause} {loc_clause} site:jobs.lever.co'),
-                ("Lever", f'"{clean_role}" {loc_clause} site:jobs.lever.co')
+                ("Lever", f'{clean_role} {loc_clause} site:jobs.lever.co')
             ]
         elif target_board == "Workday":
             board_queries = [
-                ("Workday", f'"{clean_role}" {skill_clause} {loc_clause} site:myworkdayjobs.com'),
-                ("Workday", f'"{clean_role}" {loc_clause} site:myworkdayjobs.com')
+                ("Workday", f'"{clean_role}" {skill_clause} {loc_clause} "Job Description" site:myworkdayjobs.com'),
+                ("Workday", f'{clean_role} {loc_clause} "Job Description" site:myworkdayjobs.com')
             ]
         elif target_board == "Greenhouse":
             board_queries = [
-                ("Greenhouse", f'"{clean_role}" {skill_clause} {loc_clause} site:greenhouse.io'),
-                ("Greenhouse", f'"{clean_role}" {loc_clause} site:greenhouse.io')
+                ("Greenhouse", f'"{clean_role}" {skill_clause} {loc_clause} site:boards.greenhouse.io'),
+                ("Greenhouse", f'{clean_role} {loc_clause} site:boards.greenhouse.io'),
+                ("Greenhouse", f'{clean_role} {loc_clause} site:job-boards.greenhouse.io')
             ]
         elif target_board == "Ashby":
             board_queries = [("Ashby", f'"{clean_role}" {loc_clause} site:jobs.ashbyhq.com')]
         elif target_board == "LinkedIn (Single View)":
-            board_queries = [("LinkedIn", f'"{clean_role}" {loc_clause} site:linkedin.com/jobs/view')]
-        else:
-            # All Sources: query major ATS boards
             board_queries = [
+                ("LinkedIn", f'"{clean_role}" {skill_clause} {loc_clause} site:linkedin.com/jobs/view'),
+                ("LinkedIn", f'{clean_role} {loc_clause} site:linkedin.com/jobs/view')
+            ]
+        else:
+            # All Sources: query each ATS host with individual requisition constraints
+            board_queries = [
+                ("Workday", f'"{clean_role}" {skill_clause} {loc_clause} "Job Description" site:myworkdayjobs.com'),
                 ("Lever", f'"{clean_role}" {skill_clause} {loc_clause} site:jobs.lever.co'),
-                ("Workday", f'"{clean_role}" {skill_clause} {loc_clause} site:myworkdayjobs.com'),
-                ("Greenhouse", f'"{clean_role}" {skill_clause} {loc_clause} site:greenhouse.io'),
-                ("Lever", f'"{clean_role}" {loc_clause} site:jobs.lever.co'),
-                ("Workday", f'"{clean_role}" {loc_clause} site:myworkdayjobs.com'),
-                ("Ashby", f'"{clean_role}" {loc_clause} site:jobs.ashbyhq.com')
+                ("LinkedIn", f'"{clean_role}" {skill_clause} {loc_clause} site:linkedin.com/jobs/view'),
+                ("Greenhouse", f'"{clean_role}" {skill_clause} {loc_clause} site:boards.greenhouse.io'),
+                ("Workday", f'{clean_role} {loc_clause} "Job Description" site:myworkdayjobs.com'),
+                ("Lever", f'{clean_role} {loc_clause} site:jobs.lever.co'),
+                ("LinkedIn", f'{clean_role} {loc_clause} site:linkedin.com/jobs/view'),
+                ("Greenhouse", f'{clean_role} {loc_clause} site:boards.greenhouse.io'),
+                ("Ashby", f'{clean_role} {loc_clause} site:jobs.ashbyhq.com')
             ]
 
         results = []
@@ -154,18 +157,22 @@ class JobSearcher:
                     break
                 try:
                     with DDGS() as ddgs:
-                        raw = list(ddgs.text(q.strip(), max_results=4))
+                        raw = list(ddgs.text(q.strip(), max_results=5))
                         for r in raw:
                             href = r.get("href") or r.get("url") or ""
                             title = r.get("title", "")
                             snippet = r.get("body") or r.get("snippet") or ""
 
-                            if href and href not in seen_urls and self._is_individual_job(href, title):
-                                seen_urls.add(href)
-                                clean_t = self._clean_job_title(title, source_name)
+                            # Normalize URL to prevent duplicates (e.g. Lever /apply suffix, tracking params)
+                            norm_url = re.sub(r"/apply/?$", "", href).split("?")[0].rstrip("/")
+
+                            # STRICT VALIDATION: Must be an individual job post, not a portal/directory
+                            if norm_url and norm_url not in seen_urls and self._is_individual_job(href, title):
+                                seen_urls.add(norm_url)
+                                clean_t = self._clean_job_title(title, href, source_name)
                                 results.append({
                                     "title": clean_t,
-                                    "url": href,
+                                    "url": norm_url,
                                     "snippet": snippet,
                                     "source": source_name
                                 })
@@ -177,18 +184,122 @@ class JobSearcher:
         if results:
             return results
 
-        # Fallback: Live Public Tech APIs (individual listings)
+        # Fallback: Live Public Tech APIs (individual listings only)
         api_results = self._search_public_apis(clean_role, max_results=max_results)
         if api_results:
             return api_results
 
-        return self._generate_portal_links(f"{clean_role} {location}".strip())
+        # Return empty list if no individual requisitions match (never return generic directory search sets)
+        return []
+
+    def _is_individual_job(self, url: str, title: str) -> bool:
+        """
+        STRICT VALIDATION:
+        Returns True ONLY if the URL and title represent a single individual job posting.
+        Returns False for company portal landing pages, search forms, and directory sets.
+        """
+        url_lower = url.lower()
+        title_lower = title.lower()
+
+        # Reject ad links, click trackers, and referral aggregators
+        if any(ad in url_lower for ad in ["bing.com/aclick", "google.com/aclk", "doubleclick.net", "catchwork.jobs", "jobrapido", "click?"]):
+            return False
+
+        # 1. Reject generic search / portal titles
+        rejected_title_patterns = [
+            r"^search for jobs",
+            r"search for jobs - myworkdayjobs\.com",
+            r"^careers at\s+[a-z0-9\s]+$",        # E.g. 'Careers at Quantiphi' without a job title
+            r"^jobs at\s+[a-z0-9\s]+$",           # E.g. 'Jobs at GitLab' without a job title
+            r"^job openings",
+            r"^open positions",
+            r"career opportunities",
+            r"\d+[\d,]*\+\s*jobs",
+            r"\d+[\d,]*\+\s*open roles",
+            r"\d+[\d,]*\s*job vacancies",
+            r"jobs in [a-z0-9\s]+ \(\d+",
+            r"find jobs near you"
+        ]
+
+        for p in rejected_title_patterns:
+            if re.search(p, title_lower):
+                return False
+
+        # 2. Strict Domain-Specific URL Requisition Patterns
+        # Workday: MUST have '/job/' in the path. Homepages like /Careers_at_Quantiphi or /Careers/ are REJECTED!
+        if "myworkdayjobs.com" in url_lower:
+            if "/job/" not in url_lower:
+                return False
+            # Check that there is a job slug after /job/
+            if not re.search(r"/job/[^/]+", url_lower):
+                return False
+            return True
+
+        # Lever: MUST have a job ID/UUID after company name (e.g. jobs.lever.co/company/98889651-3d5e...)
+        if "jobs.lever.co" in url_lower:
+            # If URL is just jobs.lever.co/company or jobs.lever.co/company/, reject it!
+            if re.match(r"^https?://jobs\.lever\.co/[^/]+/?$", url_lower):
+                return False
+            if not re.search(r"jobs\.lever\.co/[^/]+/[0-9a-f\-]{8,}", url_lower):
+                return False
+            return True
+
+        # Greenhouse: MUST have '/jobs/<id>' and must NOT be an expired redirect
+        if "greenhouse.io" in url_lower:
+            if "?error=true" in url_lower or "error=true" in url_lower:
+                return False
+            if not re.search(r"greenhouse\.io/[^/]+/jobs/\d+", url_lower):
+                return False
+            return True
+
+        # Ashby: MUST have a job ID/UUID
+        if "jobs.ashbyhq.com" in url_lower:
+            if re.match(r"^https?://jobs\.ashbyhq\.com/[^/]+/?$", url_lower):
+                return False
+            if not re.search(r"jobs\.ashbyhq\.com/[^/]+/[0-9a-f\-]{8,}", url_lower):
+                return False
+            return True
+
+        # LinkedIn: MUST have '/jobs/view/<id>'
+        if "linkedin.com" in url_lower:
+            if not re.search(r"linkedin\.com/jobs/view/\d+", url_lower):
+                return False
+            return True
+
+        # Indeed: MUST have '/viewjob'
+        if "indeed.com" in url_lower:
+            if "/viewjob" not in url_lower:
+                return False
+            return True
+
+        # Generic Career sites: must have specific job path segment
+        if re.search(r"/(job|jobs|requisition|position)/\d+", url_lower):
+            return True
+
+        # By default, if not confirmed as an individual job, REJECT!
+        return False
+
+    def _clean_job_title(self, title: str, url: str, source: str) -> str:
+        """Extracts clean role and company from title and URL."""
+        cleaned = re.sub(r"^Job Application for\s*", "", title, flags=re.I)
+        cleaned = re.sub(r"^Job Application:\s*", "", cleaned, flags=re.I)
+        cleaned = re.sub(r"\s*-\s*Careers\s*at\s*.*$", "", cleaned, flags=re.I)
+        cleaned = re.sub(r"\s*-\s*myworkdayjobs\.com.*$", "", cleaned, flags=re.I)
+        cleaned = re.sub(r"\s*-\s*job-boards\..*$", "", cleaned, flags=re.I)
+        cleaned = re.sub(r"\s*-\s*Logo$", "", cleaned, flags=re.I)
+
+        # If title is generic or company subdomain is known, prepend company
+        if "myworkdayjobs.com" in url.lower():
+            match = re.search(r"https?://([^.]+)\.[^/]*myworkdayjobs\.com", url, re.I)
+            if match:
+                company_name = match.group(1).title()
+                if company_name.lower() not in cleaned.lower():
+                    cleaned = f"{cleaned} at {company_name}"
+
+        return cleaned.strip()
 
     def score_job_against_profile(self, job: Dict[str, Any], candidate_profile: Dict[str, Any]) -> Dict[str, Any]:
-        """
-        Scores a job result against the candidate's master profile.
-        Returns match percentage, matched skills, and fit badge.
-        """
+        """Scores a job result against the candidate's master profile."""
         all_skills = []
         skills_obj = candidate_profile.get("skills", {})
         if isinstance(skills_obj, dict):
@@ -198,7 +309,6 @@ class JobSearcher:
         elif isinstance(skills_obj, list):
             all_skills = skills_obj
 
-        # Normalize job text
         combined_text = (job.get("title", "") + " " + job.get("snippet", "")).lower()
 
         matched_skills = []
@@ -207,7 +317,6 @@ class JobSearcher:
             if len(s_clean) > 1 and re.search(rf"\b{re.escape(s_clean.lower())}\b", combined_text):
                 matched_skills.append(s_clean)
 
-        # Title alignment check
         title_bonus = 0
         cand_titles = [exp.get("title", "").lower() for exp in candidate_profile.get("experience", []) if isinstance(exp, dict)]
         job_title_lower = job.get("title", "").lower()
@@ -216,7 +325,6 @@ class JobSearcher:
         if any(t in job_title_lower for t in ["senior", "lead", "staff"]) and any("senior" in ct for ct in cand_titles):
             title_bonus += 15
 
-        # Base skill score
         skill_score = min(65, len(matched_skills) * 18)
         total_score = min(98, 30 + title_bonus + skill_score)
 
@@ -236,46 +344,6 @@ class JobSearcher:
             "badge_color": badge_color,
             "matched_candidate_skills": matched_skills[:5]
         }
-
-    def _is_individual_job(self, url: str, title: str) -> bool:
-        """Filters out generic search sets, directory pages, and candidate aggregators."""
-        blocked_urls = [
-            r"linkedin\.com/jobs/(?!view/)",
-            r"indeed\.com/q-",
-            r"indeed\.com/jobs\?",
-            r"glassdoor\.[a-z]+/Job/",
-            r"glassdoor\.[a-z]+/Jobs-",
-            r"naukri\.com/[^/]+-jobs",
-            r"shine\.com/job-search",
-            r"foundit\.in/srp",
-            r"/browse-jobs",
-            r"/all-jobs"
-        ]
-
-        for pattern in blocked_urls:
-            if re.search(pattern, url, re.I):
-                return False
-
-        blocked_title_phrases = [
-            r"\d+[\d,]*\+\s*jobs",
-            r"\d+[\d,]*\+\s*open roles",
-            r"\d+[\d,]*\s*job vacancies",
-            r"jobs in [a-zA-Z\s]+ \(\d+",
-            r"top \d+ jobs",
-            r"browse \d+ jobs"
-        ]
-
-        for phrase in blocked_title_phrases:
-            if re.search(phrase, title, re.I):
-                return False
-
-        return True
-
-    def _clean_job_title(self, title: str, source: str) -> str:
-        title = re.sub(r"^Job Application for\s*", "", title, flags=re.I)
-        title = re.sub(r"^Job Application:\s*", "", title, flags=re.I)
-        title = re.sub(r"\s*-\s*Careers\s*at\s*.*$", "", title, flags=re.I)
-        return title.strip()
 
     def _search_public_apis(self, role: str, max_results: int = 5) -> List[Dict[str, str]]:
         results = []
@@ -302,20 +370,3 @@ class JobSearcher:
             pass
 
         return results
-
-    def _generate_portal_links(self, query: str) -> List[Dict[str, str]]:
-        encoded = urllib.parse.quote(query)
-        return [
-            {
-                "title": f"Direct Individual Postings for '{query}' on LinkedIn",
-                "url": f"https://www.linkedin.com/jobs/search/?keywords={encoded}",
-                "snippet": "Browse individual job view pages directly on LinkedIn.",
-                "source": "LinkedIn"
-            },
-            {
-                "title": f"Search '{query}' Requisitions on Google Jobs",
-                "url": f"https://www.google.com/search?q={encoded}+jobs&ibp=htl;jobs",
-                "snippet": "Individual employer job requisitions aggregated via Google.",
-                "source": "Google Jobs"
-            }
-        ]

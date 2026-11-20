@@ -317,6 +317,8 @@ with tab2:
                                 st.session_state.target_job_url = res['url']
                                 st.success(f"Selected: {st.session_state.job_data.get('title', 'Role')}")
                     st.divider()
+        elif "search_results" in st.session_state and len(st.session_state.search_results) == 0:
+            st.warning("⚠️ No individual ATS requisitions found matching these specific filters. Try setting ATS Board to 'All Sources' or broadening the title.")
 
     # Display extracted job requirements summary and profile compatibility check
     if st.session_state.job_data:
