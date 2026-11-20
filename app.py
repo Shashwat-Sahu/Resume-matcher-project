@@ -1,11 +1,13 @@
 """
 Resume Matcher Pro - Streamlit Web Application
 Connects to local Llama models via Ollama to tailor master resumes,
-beat ATS screening filters, and win interviews.
+beat ATS screening filters, export Word & PDF formats,
+and maintain complete application tracking history.
 """
 
 import os
 import json
+import re
 import streamlit as st
 from config import RECOMMENDED_LLAMA_MODELS, DEFAULT_MODEL, DEFAULT_OLLAMA_HOST, OUTPUT_DIR, DATA_DIR
 from modules.llm_client import LocalLLMClient
@@ -15,6 +17,7 @@ from modules.ats_optimizer import ATSOptimizer
 from modules.resume_tailorer import ResumeTailorer
 from modules.document_exporter import DocumentExporter
 from modules.job_searcher import JobSearcher
+from modules.application_tracker import ApplicationTracker
 
 # Page setup
 st.set_page_config(
@@ -38,13 +41,6 @@ st.markdown("""
         color: #475569;
         margin-bottom: 1.5rem;
     }
-    .score-card {
-        padding: 1.2rem;
-        border-radius: 10px;
-        background-color: #F8FAFC;
-        border: 1px solid #E2E8F0;
-        text-align: center;
-    }
     .badge-match {
         display: inline-block;
         background-color: #DEF7EC;
@@ -65,6 +61,13 @@ st.markdown("""
         font-size: 0.85rem;
         font-weight: 600;
     }
+    .history-card {
+        padding: 1rem 1.2rem;
+        border-radius: 8px;
+        background-color: #F8FAFC;
+        border: 1px solid #E2E8F0;
+        margin-bottom: 0.8rem;
+    }
 </style>
 """, unsafe_allow_html=True)
 
@@ -75,12 +78,16 @@ if "master_profile" not in st.session_state:
     st.session_state.master_profile = None
 if "job_data" not in st.session_state:
     st.session_state.job_data = None
+if "target_job_url" not in st.session_state:
+    st.session_state.target_job_url = "Direct Text Input"
 if "ats_results" not in st.session_state:
     st.session_state.ats_results = None
 if "tailored_resume_md" not in st.session_state:
     st.session_state.tailored_resume_md = ""
 if "interview_prep" not in st.session_state:
     st.session_state.interview_prep = None
+if "last_recorded_app" not in st.session_state:
+    st.session_state.last_recorded_app = None
 
 # Sidebar: Local Llama Model Configuration
 with st.sidebar:
@@ -127,15 +134,16 @@ with st.sidebar:
 
 # Header
 st.markdown('<div class="main-title">🎯 AI Resume Matcher & ATS Optimizer</div>', unsafe_allow_html=True)
-st.markdown('<div class="sub-title">Connects to local Llama models to tailor your Master Resume for any target role, pass ATS filters, and land interviews.</div>', unsafe_allow_html=True)
+st.markdown('<div class="sub-title">Connects to local Llama models to tailor your Master Resume for any target role, pass ATS filters, export PDF/DOCX, and track your applications.</div>', unsafe_allow_html=True)
 
 # Main Application Tabs
-tab1, tab2, tab3, tab4, tab5 = st.tabs([
+tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs([
     "1. 📄 Master Resume",
     "2. 💼 Target Job Intake",
     "3. 📊 ATS Score & Gap Analysis",
-    "4. ✨ Tailored Resume",
-    "5. 🎙️ Interview Prep"
+    "4. ✨ Tailored Resume (PDF/DOCX)",
+    "5. 🎙️ Interview Prep",
+    "6. 📂 Application Tracker & History"
 ])
 
 # -------------------------------------------------------------
@@ -197,7 +205,7 @@ with tab1:
 # -------------------------------------------------------------
 with tab2:
     st.subheader("Target Job Description")
-    st.write("Provide the job you want to match against via direct text, a live posting link, or automated job search.")
+    st.write("Provide the target job via direct text, a live posting link, or automated job search. The system tracks the job title and URL for your application records.")
 
     jd_mode = st.radio("Input Method", ["Paste Job Description Text", "Provide Job Posting Link (URL)", "Search Live Jobs for My Profile"], horizontal=True)
 
@@ -217,6 +225,8 @@ with tab2:
             placeholder="Paste complete job description including requirements, responsibilities, and qualifications..."
         )
 
+        custom_url = st.text_input("Job Posting URL (Optional, for tracking records)", value="Direct Text Input")
+
         if st.button("Analyze Target Job", type="primary"):
             if not jd_text.strip():
                 st.warning("Please paste a job description.")
@@ -224,6 +234,7 @@ with tab2:
                 with st.spinner("Extracting employer requirements and keywords..."):
                     extractor = JobExtractor(llm_client)
                     st.session_state.job_data = extractor.parse_job_description(jd_text)
+                    st.session_state.target_job_url = custom_url.strip() or "Direct Text Input"
                     st.success(f"Target Job Analyzed: {st.session_state.job_data.get('title', 'Role')}")
 
     elif jd_mode == "Provide Job Posting Link (URL)":
@@ -236,6 +247,7 @@ with tab2:
                     try:
                         extractor = JobExtractor(llm_client)
                         st.session_state.job_data = extractor.parse_job_description(job_url)
+                        st.session_state.target_job_url = job_url.strip()
                         st.success(f"Parsed Job: {st.session_state.job_data.get('title', 'Role')} at {st.session_state.job_data.get('company', 'Company')}")
                     except Exception as e:
                         st.error(f"Error fetching job: {e}")
@@ -280,6 +292,7 @@ with tab2:
                             with st.spinner("Extracting selected job details..."):
                                 extractor = JobExtractor(llm_client)
                                 st.session_state.job_data = extractor.parse_job_description(res['url'])
+                                st.session_state.target_job_url = res['url']
                                 st.success(f"Selected: {st.session_state.job_data.get('title', 'Role')}")
                     st.divider()
 
@@ -287,6 +300,7 @@ with tab2:
     if st.session_state.job_data:
         jd = st.session_state.job_data
         st.markdown(f"### Target: {jd.get('title', 'Role')} ({jd.get('company', 'Company')})")
+        st.caption(f"🔗 **Tracking URL / Source:** {st.session_state.target_job_url}")
         c1, c2 = st.columns(2)
         with c1:
             st.markdown("**Required Hard Skills:**")
@@ -371,10 +385,10 @@ with tab3:
             st.markdown(f"- {tip}")
 
 # -------------------------------------------------------------
-# TAB 4: TAILORED RESUME GENERATION
+# TAB 4: TAILORED RESUME GENERATION (PDF, DOCX, MD)
 # -------------------------------------------------------------
 with tab4:
-    st.subheader("Generate Tailored, ATS-Optimized Resume")
+    st.subheader("Generate Tailored ATS Resume (PDF & DOCX)")
     st.write("Using your local Llama model, this synthesizes your authentic achievements into a single-column, ATS-safe resume tailored specifically to the employer's requirements.")
 
     if not st.session_state.master_resume_text:
@@ -401,7 +415,51 @@ with tab4:
                         ats_analysis=st.session_state.ats_results
                     )
                     st.session_state.tailored_resume_md = tailored_md
-                    st.success("Resume tailored successfully!")
+
+                    # Build file exports & record application
+                    exporter = DocumentExporter(output_dir=OUTPUT_DIR)
+                    cand_name = profile.get("contact", {}).get("name") or "Candidate"
+                    target_title = st.session_state.job_data.get("title", "Role")
+                    company = st.session_state.job_data.get("company", "Company")
+                    target_url = st.session_state.target_job_url
+
+                    # Sanitize filename
+                    clean_c = re.sub(r"[^\w\-]", "_", company).strip("_")
+                    clean_t = re.sub(r"[^\w\-]", "_", target_title).strip("_")
+                    base_name = f"Resume_{clean_c}_{clean_t}"
+
+                    pdf_file = exporter.export_pdf(
+                        markdown_text=tailored_md,
+                        filename=f"{base_name}.pdf",
+                        candidate_name=cand_name,
+                        job_title=target_title,
+                        company=company,
+                        job_url=target_url
+                    )
+
+                    try:
+                        docx_file = exporter.export_docx(tailored_md, filename=f"{base_name}.docx")
+                    except Exception:
+                        docx_file = ""
+
+                    md_file = exporter.export_markdown(tailored_md, filename=f"{base_name}.md")
+
+                    # Track application
+                    tracker = ApplicationTracker(output_dir=OUTPUT_DIR)
+                    app_record = tracker.record_application(
+                        candidate_name=cand_name,
+                        job_title=target_title,
+                        company=company,
+                        job_url=target_url,
+                        ats_score=st.session_state.ats_results["overall_score"],
+                        breakdown=st.session_state.ats_results["breakdown"],
+                        pdf_path=pdf_file,
+                        docx_path=docx_file,
+                        md_path=md_file,
+                        top_skills=st.session_state.job_data.get("required_hard_skills", [])[:6]
+                    )
+                    st.session_state.last_recorded_app = app_record
+                    st.success(f"Resume tailored & logged for **{company} - {target_title}**!")
 
     if st.session_state.tailored_resume_md:
         st.markdown("---")
@@ -409,7 +467,7 @@ with tab4:
         st.session_state.tailored_resume_md = st.text_area(
             "Tailored Resume (Markdown / Single-Column ATS Layout)",
             value=st.session_state.tailored_resume_md,
-            height=420
+            height=380
         )
 
         # Download / Export Section
@@ -417,53 +475,63 @@ with tab4:
         exp_col1, exp_col2, exp_col3 = st.columns(3)
 
         exporter = DocumentExporter(output_dir=OUTPUT_DIR)
+        cand_name = (st.session_state.master_profile or {}).get("contact", {}).get("name") or "Candidate"
+        target_title = (st.session_state.job_data or {}).get("title", "Role")
+        company = (st.session_state.job_data or {}).get("company", "Company")
+        target_url = st.session_state.target_job_url
+        clean_c = re.sub(r"[^\w\-]", "_", company).strip("_")
+        clean_t = re.sub(r"[^\w\-]", "_", target_title).strip("_")
+        base_name = f"Resume_{clean_c}_{clean_t}"
 
         with exp_col1:
             try:
-                docx_path = exporter.export_docx(st.session_state.tailored_resume_md, filename="ATS_Tailored_Resume.docx")
+                pdf_path = exporter.export_pdf(
+                    st.session_state.tailored_resume_md,
+                    filename=f"{base_name}.pdf",
+                    candidate_name=cand_name,
+                    job_title=target_title,
+                    company=company,
+                    job_url=target_url
+                )
+                with open(pdf_path, "rb") as f:
+                    st.download_button(
+                        label="📕 Download PDF (Selectable ATS Text-Layer)",
+                        data=f.read(),
+                        file_name=f"{base_name}.pdf",
+                        mime="application/pdf",
+                        use_container_width=True
+                    )
+            except Exception as e:
+                st.caption(f"PDF export note: {e}")
+
+        with exp_col2:
+            try:
+                docx_path = exporter.export_docx(st.session_state.tailored_resume_md, filename=f"{base_name}.docx")
                 with open(docx_path, "rb") as f:
                     st.download_button(
                         label="📄 Download DOCX (Safest for Workday)",
                         data=f.read(),
-                        file_name="ATS_Tailored_Resume.docx",
+                        file_name=f"{base_name}.docx",
                         mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
                         use_container_width=True
                     )
             except Exception as e:
-                st.caption(f"DOCX export requires python-docx ({e})")
+                st.caption(f"DOCX export note: {e}")
 
-        with exp_col2:
-            md_path = exporter.export_markdown(st.session_state.tailored_resume_md, filename="ATS_Tailored_Resume.md")
+        with exp_col3:
+            md_path = exporter.export_markdown(st.session_state.tailored_resume_md, filename=f"{base_name}.md")
             with open(md_path, "r", encoding="utf-8") as f:
                 st.download_button(
                     label="📝 Download Markdown (.md)",
                     data=f.read(),
-                    file_name="ATS_Tailored_Resume.md",
+                    file_name=f"{base_name}.md",
                     mime="text/markdown",
                     use_container_width=True
                 )
 
-        with exp_col3:
-            st.download_button(
-                label="📋 Download Plain Text (.txt)",
-                data=st.session_state.tailored_resume_md,
-                file_name="ATS_Tailored_Resume.txt",
-                mime="text/plain",
-                use_container_width=True
-            )
-
-        # Re-Audit Button on Tailored Resume
-        st.markdown("---")
-        if st.button("🔄 Re-Audit ATS Score on Tailored Resume"):
-            with st.spinner("Re-auditing tailored resume..."):
-                optimizer = ATSOptimizer()
-                new_results = optimizer.calculate_ats_score(
-                    resume_data={},
-                    job_data=st.session_state.job_data,
-                    raw_resume_text=st.session_state.tailored_resume_md
-                )
-                st.session_state.ats_results = new_results
-                st.success(f"New ATS Score: **{new_results['overall_score']} / 100** ({new_results['rating']})")
+        if st.session_state.last_recorded_app:
+            rec = st.session_state.last_recorded_app
+            st.info(f"💾 **Application Record Created:** `{rec['company']} - {rec['job_title']}` | **URL:** {rec['job_url']}")
 
 # -------------------------------------------------------------
 # TAB 5: INTERVIEW PREP & TACTICS
@@ -483,6 +551,12 @@ with tab5:
                     st.session_state.job_data or {}
                 )
                 st.session_state.interview_prep = prep
+
+                # Save prep to file
+                prep_path = os.path.join(OUTPUT_DIR, "interview_prep.json")
+                with open(prep_path, "w", encoding="utf-8") as f:
+                    json.dump(prep, f, indent=2)
+
                 st.success("Interview preparation strategy generated!")
 
         if st.session_state.interview_prep:
@@ -514,3 +588,77 @@ with tab5:
             st.markdown("### ❓ Strategic Questions to Ask the Interviewer")
             for q in prep.get("questions_to_ask_interviewer", []):
                 st.markdown(f"- {q}")
+
+# -------------------------------------------------------------
+# TAB 6: APPLICATION TRACKER & HISTORY
+# -------------------------------------------------------------
+with tab6:
+    st.subheader("📂 Application History & Tailored Resumes")
+    st.write("Track every job and URL you have generated a tailored resume for, along with its ATS score and generated files.")
+
+    tracker = ApplicationTracker(output_dir=OUTPUT_DIR)
+    history = tracker.load_history()
+
+    if not history:
+        st.info("No applications tailored yet. Once you tailor a resume in Tab 4, it will automatically appear here with its job URL and ATS score.")
+    else:
+        st.write(f"Showing **{len(history)}** tailored applications:")
+
+        for rec in history:
+            with st.container():
+                st.markdown(f"### {rec.get('job_title', 'Role')} @ **{rec.get('company', 'Company')}**")
+                c_info1, c_info2 = st.columns([3, 1])
+
+                with c_info1:
+                    job_url = rec.get("job_url", "Direct Text Input")
+                    if job_url.startswith("http"):
+                        st.markdown(f"🔗 **Job Posting URL:** [{job_url}]({job_url})")
+                    else:
+                        st.markdown(f"🔗 **Source:** `{job_url}`")
+                    st.caption(f"📅 **Date Created:** {rec.get('created_at')} | **Candidate:** {rec.get('candidate_name')}")
+
+                    if rec.get("top_skills"):
+                        st.write("**Target Skills:** " + ", ".join([f"`{s}`" for s in rec.get("top_skills", [])]))
+
+                with c_info2:
+                    score = rec.get("ats_score", 0)
+                    st.metric("ATS Match Score", f"{score}%")
+
+                # Action buttons to download specific saved files
+                col_d1, col_d2, col_d3 = st.columns(3)
+                pdf_p = rec.get("files", {}).get("pdf")
+                docx_p = rec.get("files", {}).get("docx")
+                md_p = rec.get("files", {}).get("markdown")
+
+                with col_d1:
+                    if pdf_p and os.path.exists(pdf_p):
+                        with open(pdf_p, "rb") as f:
+                            st.download_button(
+                                label="📕 Download Saved PDF",
+                                data=f.read(),
+                                file_name=os.path.basename(pdf_p),
+                                mime="application/pdf",
+                                key=f"hist_pdf_{rec['id']}"
+                            )
+                with col_d2:
+                    if docx_p and os.path.exists(docx_p):
+                        with open(docx_p, "rb") as f:
+                            st.download_button(
+                                label="📄 Download Saved DOCX",
+                                data=f.read(),
+                                file_name=os.path.basename(docx_p),
+                                mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+                                key=f"hist_docx_{rec['id']}"
+                            )
+                with col_d3:
+                    if md_p and os.path.exists(md_p):
+                        with open(md_p, "r", encoding="utf-8") as f:
+                            st.download_button(
+                                label="📝 Download Saved Markdown",
+                                data=f.read(),
+                                file_name=os.path.basename(md_p),
+                                mime="text/markdown",
+                                key=f"hist_md_{rec['id']}"
+                            )
+
+                st.divider()

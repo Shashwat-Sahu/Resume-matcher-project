@@ -8,6 +8,7 @@ from modules.ats_optimizer import ATSOptimizer
 from modules.resume_tailorer import ResumeTailorer
 from modules.document_exporter import DocumentExporter
 from modules.job_searcher import JobSearcher
+from modules.application_tracker import ApplicationTracker
 
 __all__ = [
     "LocalLLMClient",
@@ -16,5 +17,6 @@ __all__ = [
     "ATSOptimizer",
     "ResumeTailorer",
     "DocumentExporter",
-    "JobSearcher"
+    "JobSearcher",
+    "ApplicationTracker"
 ]
