@@ -283,6 +283,98 @@ class ATSOptimizer:
             "checks_passed": checks_passed
         }
 
+    def evaluate_candidate_job_fit(self, candidate_profile: Dict[str, Any], job_data: Dict[str, Any], raw_resume_text: str) -> Dict[str, Any]:
+        """
+        Evaluates foundational candidate-to-job compatibility:
+        - Candidate experience seniority vs target role
+        - Must-have skills overlap percentage
+        - Clear actionable verdict (Strong Match, Stretch/Pivot, or Mismatch)
+        """
+        # Collect candidate skills
+        cand_skills = set()
+        skills_obj = candidate_profile.get("skills", {})
+        if isinstance(skills_obj, dict):
+            for cat, items in skills_obj.items():
+                if isinstance(items, list):
+                    for it in items:
+                        cand_skills.add(str(it).lower().strip())
+        elif isinstance(skills_obj, list):
+            for it in skills_obj:
+                cand_skills.add(str(it).lower().strip())
+
+        raw_lower = raw_resume_text.lower()
+
+        # Job requirements
+        req_skills = job_data.get("required_hard_skills", [])
+        matched_req = []
+        missing_req = []
+
+        for skill in req_skills:
+            s_clean = str(skill).lower().strip()
+            if s_clean in cand_skills or re.search(rf"\b{re.escape(s_clean)}\b", raw_lower):
+                matched_req.append(skill)
+            else:
+                missing_req.append(skill)
+
+        total_req = len(req_skills)
+        req_overlap_pct = round((len(matched_req) / total_req * 100)) if total_req > 0 else 75
+
+        # Seniority estimation
+        exp_count = len(candidate_profile.get("experience", []))
+        # Estimate years by looking for numbers followed by + years
+        years_match = re.search(r"(\d+)\+?\s*years", raw_resume_text, re.I)
+        cand_years = int(years_match.group(1)) if years_match else max(2, exp_count * 2)
+
+        # Check job title level
+        job_title = job_data.get("title", "").lower()
+        if any(w in job_title for w in ["principal", "lead", "staff", "architect"]):
+            target_level = "Staff / Lead (8+ Years)"
+            req_years = 8
+        elif any(w in job_title for w in ["senior", "sr."]):
+            target_level = "Senior (5+ Years)"
+            req_years = 5
+        elif any(w in job_title for w in ["intern", "entry", "associate", "junior"]):
+            target_level = "Early Career (0-2 Years)"
+            req_years = 1
+        else:
+            target_level = "Mid-Level (3-5 Years)"
+            req_years = 3
+
+        # Seniority compatibility
+        seniority_gap = cand_years - req_years
+        if seniority_gap >= 0:
+            seniority_status = f"Aligned ({cand_years}+ years experience matches/exceeds {target_level})"
+            seniority_fit = True
+        else:
+            seniority_status = f"Stretch Level ({cand_years} years vs recommended {req_years}+ years for {target_level})"
+            seniority_fit = False
+
+        # Fit Verdict
+        if req_overlap_pct >= 65 and seniority_fit:
+            verdict = "Strong Match"
+            badge_color = "green"
+            summary = f"Your background directly matches the core requirements for {job_data.get('title', 'this role')}. High interview probability with tailored resume."
+        elif req_overlap_pct >= 40:
+            verdict = "Stretch / Pivot Opportunity"
+            badge_color = "orange"
+            summary = f"You possess strong foundational technical overlap ({len(matched_req)} core skills matched), but will need strategic framing for {len(missing_req)} missing requirements."
+        else:
+            verdict = "Significant Tech Stack Gap"
+            badge_color = "red"
+            summary = f"This position requires specific technologies not currently prominent in your master resume. Tailoring can help, but expect deep scrutiny on: {', '.join(missing_req[:4])}."
+
+        return {
+            "verdict": verdict,
+            "badge_color": badge_color,
+            "summary": summary,
+            "overlap_percentage": req_overlap_pct,
+            "matched_required_skills": matched_req,
+            "missing_required_skills": missing_req,
+            "candidate_years": cand_years,
+            "target_seniority_level": target_level,
+            "seniority_status": seniority_status
+        }
+
     def _generate_actionable_tips(self, kw: Dict[str, Any], metric: Dict[str, Any], fmt: Dict[str, Any]) -> List[str]:
         tips = []
 

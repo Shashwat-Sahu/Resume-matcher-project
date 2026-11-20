@@ -72,6 +72,12 @@ def run_pipeline(
     print(f"      Job URL/Source: {resolved_url}")
     print(f"      Required Skills: {', '.join(job_data.get('required_hard_skills', [])[:5])}")
 
+    # Foundational Candidate-Job Fit Check
+    optimizer = ATSOptimizer()
+    fit = optimizer.evaluate_candidate_job_fit(profile, job_data, raw_resume)
+    print(f"      [Profile Compatibility] {fit['verdict']} ({fit['overlap_percentage']}% Core Stack Overlap)")
+    print(f"      [Seniority Alignment]  {fit['seniority_status']}")
+
     # Build meaningful file base name if not supplied
     if not output_name:
         clean_comp = re.sub(r"[^\w\-]", "_", company).strip("_")

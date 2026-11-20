@@ -253,10 +253,18 @@ with tab2:
                         st.error(f"Error fetching job: {e}")
 
     else:
-        st.write("Search for **individual job requisition postings** (Greenhouse, Lever, Workday, Ashby) matching your profile.")
+        st.write("Search for **individual job requisition postings** (Greenhouse, Lever, Workday, Ashby) matched specifically to your candidate profile.")
+        
+        searcher = JobSearcher()
+        profile_obj = st.session_state.master_profile or {}
+        anchors = searcher.extract_profile_anchors(profile_obj)
+
+        if profile_obj:
+            st.info(f"👤 **Detected Candidate Profile:** `{anchors['recommended_title']}` | **Core Stack:** {', '.join([f'`{s}`' for s in anchors['anchor_skills'][:4]])}")
+
         col_s1, col_s2, col_s3 = st.columns([2, 1, 1.2])
         with col_s1:
-            search_title = st.text_input("Target Role Title", value="Software Developer")
+            search_title = st.text_input("Target Role Title", value=anchors["recommended_title"])
         with col_s2:
             search_loc = st.text_input("Location / City", value="Bengaluru")
         with col_s3:
@@ -266,25 +274,40 @@ with tab2:
                 help="Filters specifically for individual job postings rather than search result directory aggregators."
             )
 
-        if st.button("Search Matching Openings", type="primary"):
-            with st.spinner(f"Searching individual {search_portal} job postings for '{search_title}' in {search_loc}..."):
-                searcher = JobSearcher()
-                results = searcher.search_individual_jobs(
+        col_anc1, col_anc2 = st.columns([2, 2])
+        with col_anc1:
+            anchor_tech = st.text_input(
+                "Anchor Technology Filter (Optional)",
+                value=anchors["anchor_skills"][0] if anchors["anchor_skills"] else "",
+                help="Ensures fetched jobs contain this specific core skill from your profile (e.g. Python, AWS, Go)."
+            )
+
+        if st.button("Search Profile-Matched Openings", type="primary"):
+            with st.spinner(f"Finding individual job openings matching your profile in {search_loc}..."):
+                results = searcher.search_matching_jobs(
+                    candidate_profile=profile_obj,
                     role=search_title,
                     location=search_loc,
                     target_board=search_portal,
+                    anchor_skill=anchor_tech,
                     max_results=6
                 )
                 st.session_state.search_results = results
 
         if "search_results" in st.session_state and st.session_state.search_results:
-            st.markdown("### 🎯 Individual Job Postings Found:")
-            st.caption("Each listing below is an individual job opening with its own specific requirements and responsibilities.")
+            st.markdown("### 🎯 Profile-Matched Opportunities:")
+            st.caption("Ranked by skill overlap with your candidate profile. Individual postings only.")
             for i, res in enumerate(st.session_state.search_results):
                 with st.container():
-                    st.markdown(f"**{res['title']}** ({res.get('source', 'Job Board')})")
+                    score = res.get("match_score", 75)
+                    fit_tier = res.get("fit_tier", "High Match")
+                    st.markdown(f"**{res['title']}** ({res.get('source', 'Job Board')}) — <span class='badge-match'>{score}% Profile Fit • {fit_tier}</span>", unsafe_allow_html=True)
                     st.caption(f"URL: [{res['url']}]({res['url']})")
                     st.write(res["snippet"])
+
+                    if res.get("matched_candidate_skills"):
+                        st.write("✅ **Skills in Job Matching Your Profile:** " + ", ".join([f"`{s}`" for s in res["matched_candidate_skills"]]))
+
                     col_b1, col_b2 = st.columns([1, 4])
                     with col_b1:
                         if st.button(f"Use This Job", key=f"select_job_{i}"):
@@ -295,11 +318,29 @@ with tab2:
                                 st.success(f"Selected: {st.session_state.job_data.get('title', 'Role')}")
                     st.divider()
 
-    # Display extracted job requirements summary
+    # Display extracted job requirements summary and profile compatibility check
     if st.session_state.job_data:
         jd = st.session_state.job_data
-        st.markdown(f"### Target: {jd.get('title', 'Role')} ({jd.get('company', 'Company')})")
+        st.markdown("---")
+        st.markdown(f"### Target Role: {jd.get('title', 'Role')} ({jd.get('company', 'Company')})")
         st.caption(f"🔗 **Tracking URL / Source:** {st.session_state.target_job_url}")
+
+        # Candidate-to-Job Fit Compatibility Audit
+        optimizer = ATSOptimizer()
+        fit_assessment = optimizer.evaluate_candidate_job_fit(
+            candidate_profile=st.session_state.master_profile or {},
+            job_data=jd,
+            raw_resume_text=st.session_state.master_resume_text
+        )
+
+        col_fit1, col_fit2 = st.columns([3, 1])
+        with col_fit1:
+            st.info(f"🔍 **Profile Compatibility:** **{fit_assessment['verdict']}** ({fit_assessment['overlap_percentage']}% Core Stack Overlap)\n\n"
+                    f"{fit_assessment['summary']}\n\n"
+                    f"**Experience Check:** {fit_assessment['seniority_status']}")
+        with col_fit2:
+            st.metric("Foundational Fit", f"{fit_assessment['overlap_percentage']}%", delta=fit_assessment['verdict'])
+
         c1, c2 = st.columns(2)
         with c1:
             st.markdown("**Required Hard Skills:**")
