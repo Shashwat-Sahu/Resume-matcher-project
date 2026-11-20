@@ -10,8 +10,8 @@ requests>=2.31.0
 beautifulsoup4>=4.12.3
 trafilatura>=1.9.0
 
-# Automated Job Search
-duckduckgo-search>=6.2.0
+# Automated Job Search (New ddgs engine)
+ddgs>=9.0.0
 
 # Data validation
 pydantic>=2.9.0

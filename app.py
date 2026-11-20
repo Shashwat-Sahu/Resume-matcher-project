@@ -241,32 +241,46 @@ with tab2:
                         st.error(f"Error fetching job: {e}")
 
     else:
-        st.write("Automatically search live openings on Greenhouse, Lever, and Workday matching your profile.")
-        col_s1, col_s2 = st.columns(2)
+        st.write("Search live job openings across company career pages and ATS job boards matching your profile.")
+        col_s1, col_s2, col_s3 = st.columns([2, 1, 1])
         with col_s1:
-            search_title = st.text_input("Target Role Title", value="Senior Cloud Platform Engineer")
+            search_title = st.text_input("Target Role Title", value="Software Developer")
         with col_s2:
-            search_loc = st.text_input("Location / Remote", value="Remote")
+            search_loc = st.text_input("Location / City", value="Bengaluru")
+        with col_s3:
+            search_portal = st.selectbox("Target Board", ["All Sources", "Greenhouse", "Lever", "LinkedIn", "Indeed"])
 
         if st.button("Search Matching Openings", type="primary"):
-            with st.spinner("Searching ATS boards for matching openings..."):
+            with st.spinner("Searching job boards for matching openings..."):
                 searcher = JobSearcher()
-                query = f"{search_title} {search_loc} site:boards.greenhouse.io OR site:jobs.lever.co"
-                results = searcher.search_jobs(query, max_results=6)
+                portal_filter = ""
+                if search_portal == "Greenhouse":
+                    portal_filter = "greenhouse"
+                elif search_portal == "Lever":
+                    portal_filter = "lever"
+                elif search_portal == "LinkedIn":
+                    portal_filter = "linkedin"
+                elif search_portal == "Indeed":
+                    portal_filter = "indeed"
+
+                query_str = f"{search_title} {search_loc} {portal_filter}".strip()
+                results = searcher.search_jobs(query_str, max_results=6)
                 st.session_state.search_results = results
 
         if "search_results" in st.session_state and st.session_state.search_results:
             st.markdown("### Matching Opportunities Found:")
             for i, res in enumerate(st.session_state.search_results):
                 with st.container():
-                    st.markdown(f"**{res['title']}**")
-                    st.caption(f"URL: {res['url']}")
+                    st.markdown(f"**{res['title']}** ({res.get('source', 'Job Board')})")
+                    st.caption(f"URL: [{res['url']}]({res['url']})")
                     st.write(res["snippet"])
-                    if st.button(f"Use This Job ({i+1})", key=f"select_job_{i}"):
-                        with st.spinner("Extracting selected job details..."):
-                            extractor = JobExtractor(llm_client)
-                            st.session_state.job_data = extractor.parse_job_description(res['url'])
-                            st.success(f"Selected: {st.session_state.job_data.get('title', 'Role')}")
+                    col_b1, col_b2 = st.columns([1, 4])
+                    with col_b1:
+                        if st.button(f"Use This Job", key=f"select_job_{i}"):
+                            with st.spinner("Extracting selected job details..."):
+                                extractor = JobExtractor(llm_client)
+                                st.session_state.job_data = extractor.parse_job_description(res['url'])
+                                st.success(f"Selected: {st.session_state.job_data.get('title', 'Role')}")
                     st.divider()
 
     # Display extracted job requirements summary
