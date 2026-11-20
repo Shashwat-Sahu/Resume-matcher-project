@@ -3,7 +3,11 @@ Document Exporter module.
 Generates 100% ATS-compliant single-column formats:
 - Clean Markdown (.md)
 - Workday/Greenhouse certified Word DOCX (.docx)
-- Text-layer selectable PDF (.pdf) with embedded job metadata
+- Text-layer selectable PDF (.pdf) with ATS Templates:
+  * Jake's Tech Standard (Single-Column Sans-Serif - Google/Tech standard)
+  * Harvard Ivy Standard (Classic Serif - Times New Roman / Finance / Executive)
+  * Modern Minimalist (FAANG Accent Blue)
+  Supports Page Length budgets: Strict 1-Page vs Standard 2-Page vs Auto.
 """
 
 import os
@@ -24,7 +28,7 @@ try:
     from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, HRFlowable
     from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
     from reportlab.lib import colors
-    from reportlab.lib.enums import TA_CENTER, TA_LEFT
+    from reportlab.lib.enums import TA_CENTER, TA_LEFT, TA_RIGHT
 except ImportError:
     SimpleDocTemplate = None
 
@@ -41,11 +45,11 @@ class DocumentExporter:
             f.write(markdown_text)
         return path
 
-    def export_docx(self, markdown_text: str, filename: str = "tailored_resume.docx") -> str:
+    def export_docx(self, markdown_text: str, filename: str = "tailored_resume.docx", page_length: str = "auto") -> str:
         """
         Builds a strictly ATS-compliant single-column Word document.
-        - Standard 0.75-inch margins
-        - Calibri clean sans-serif typography
+        - Standard 0.75-inch (or 0.5-inch for 1-page) margins
+        - Calibri typography
         - No tables, no headers/footers (Workday strips them)
         - Native Word bullet lists
         """
@@ -53,20 +57,20 @@ class DocumentExporter:
             raise ImportError("python-docx is required for DOCX export. Run: pip install python-docx")
 
         doc = docx.Document()
+        margin = 0.5 if page_length == "1-page" else 0.75
 
-        # Set page margins to 0.75 inches
         for section in doc.sections:
-            section.top_margin = Inches(0.75)
-            section.bottom_margin = Inches(0.75)
-            section.left_margin = Inches(0.75)
-            section.right_margin = Inches(0.75)
+            section.top_margin = Inches(margin)
+            section.bottom_margin = Inches(margin)
+            section.left_margin = Inches(margin)
+            section.right_margin = Inches(margin)
             section.header.is_linked_to_previous = False
             section.footer.is_linked_to_previous = False
 
         style = doc.styles["Normal"]
         font = style.font
         font.name = "Calibri"
-        font.size = Pt(10.5)
+        font.size = Pt(9.5 if page_length == "1-page" else 10.5)
         font.color.rgb = RGBColor(30, 30, 30)
 
         lines = markdown_text.split("\n")
@@ -85,19 +89,19 @@ class DocumentExporter:
                 p.paragraph_format.space_after = Pt(2)
                 run = p.add_run(name_text)
                 run.bold = True
-                run.font.size = Pt(20)
+                run.font.size = Pt(18 if page_length == "1-page" else 20)
                 run.font.color.rgb = RGBColor(15, 23, 42)
 
-            # Heading 2: Standard Section Header
+            # Heading 2: Section Header
             elif line.startswith("## "):
                 sec_text = line[3:].strip()
                 p = doc.add_paragraph()
-                p.paragraph_format.space_before = Pt(11)
-                p.paragraph_format.space_after = Pt(3)
+                p.paragraph_format.space_before = Pt(8 if page_length == "1-page" else 11)
+                p.paragraph_format.space_after = Pt(2 if page_length == "1-page" else 3)
                 p.paragraph_format.keep_with_next = True
                 run = p.add_run(sec_text.upper())
                 run.bold = True
-                run.font.size = Pt(12)
+                run.font.size = Pt(11 if page_length == "1-page" else 12)
                 run.font.color.rgb = RGBColor(30, 58, 138)
                 self._add_bottom_border(p)
 
@@ -105,32 +109,32 @@ class DocumentExporter:
             elif line.startswith("### "):
                 role_text = line[4:].strip()
                 p = doc.add_paragraph()
-                p.paragraph_format.space_before = Pt(5)
-                p.paragraph_format.space_after = Pt(2)
+                p.paragraph_format.space_before = Pt(4 if page_length == "1-page" else 5)
+                p.paragraph_format.space_after = Pt(1 if page_length == "1-page" else 2)
                 p.paragraph_format.keep_with_next = True
                 run = p.add_run(role_text)
                 run.bold = True
-                run.font.size = Pt(10.5)
+                run.font.size = Pt(9.5 if page_length == "1-page" else 10.5)
 
             # Bullet points
             elif line.startswith(("- ", "* ", "• ")):
                 bullet_text = line[2:].strip()
                 p = doc.add_paragraph(style="List Bullet")
-                p.paragraph_format.space_before = Pt(1)
-                p.paragraph_format.space_after = Pt(1.5)
-                p.paragraph_format.line_spacing = 1.15
+                p.paragraph_format.space_before = Pt(0.5 if page_length == "1-page" else 1)
+                p.paragraph_format.space_after = Pt(1 if page_length == "1-page" else 1.5)
+                p.paragraph_format.line_spacing = 1.1 if page_length == "1-page" else 1.15
                 self._format_bold_spans(p, bullet_text)
 
             # Regular paragraph
             else:
                 p = doc.add_paragraph()
-                p.paragraph_format.space_before = Pt(2)
-                p.paragraph_format.space_after = Pt(2.5)
-                p.paragraph_format.line_spacing = 1.15
+                p.paragraph_format.space_before = Pt(1.5 if page_length == "1-page" else 2)
+                p.paragraph_format.space_after = Pt(2 if page_length == "1-page" else 2.5)
+                p.paragraph_format.line_spacing = 1.1 if page_length == "1-page" else 1.15
 
                 if "|" in line and ("@" in line or "linkedin" in line.lower() or "phone" in line.lower()):
                     p.alignment = WD_ALIGN_PARAGRAPH.CENTER
-                    p.paragraph_format.space_after = Pt(6)
+                    p.paragraph_format.space_after = Pt(5 if page_length == "1-page" else 7)
 
                 self._format_bold_spans(p, line)
 
@@ -145,82 +149,129 @@ class DocumentExporter:
         candidate_name: str = "Candidate",
         job_title: str = "",
         company: str = "",
-        job_url: str = ""
+        job_url: str = "",
+        template: str = "jake",
+        page_length: str = "auto"
     ) -> str:
         """
-        Generates a 100% ATS-compliant text-layer PDF using ReportLab:
-        - Active selectable text (never flattened/rasterized)
-        - Strict single-column layout
-        - Standard 0.75-inch margins
-        - Embedded PDF metadata tracking target job, company, and URL
+        Generates a 100% ATS-compliant text-layer PDF with selectable text:
+        Templates:
+          - 'jake': Tech standard, clean sans-serif (Helvetica), high-density
+          - 'harvard': Classic Ivy League serif (Times-Roman), formal divider rules
+          - 'modern': Minimalist FAANG accent (Navy/Slate headers)
+        Page Length Budgets:
+          - '1-page': Tight margins (0.5"), compact typography (8.5-9pt), tuned for 1 page
+          - '2-page' / 'auto': Standard margins (0.75"), 9.5-10pt body font
         """
         if not SimpleDocTemplate:
             raise ImportError("reportlab is required for PDF export. Run: pip install reportlab")
 
         output_path = os.path.join(self.output_dir, filename)
 
-        # 0.75 inch margins (54 points)
+        # Page margins
+        if page_length == "1-page":
+            margin = 36.0  # 0.5 inch for strict 1-page density
+            v_margin = 32.0
+            body_size = 8.5
+            body_leading = 11.2
+            name_size = 16.0
+            name_leading = 19.0
+            sec_size = 10.0
+            sec_leading = 12.5
+            bullet_space = 1.0
+            sec_space_before = 5.0
+            sec_space_after = 2.0
+        else:
+            margin = 54.0  # 0.75 inch standard ATS margin
+            v_margin = 42.0
+            body_size = 9.5
+            body_leading = 13.0
+            name_size = 19.0
+            name_leading = 23.0
+            sec_size = 11.0
+            sec_leading = 14.0
+            bullet_space = 2.0
+            sec_space_before = 8.0
+            sec_space_after = 3.0
+
         doc = SimpleDocTemplate(
             output_path,
             pagesize=letter,
-            leftMargin=54,
-            rightMargin=54,
-            topMargin=45,
-            bottomMargin=45
+            leftMargin=margin,
+            rightMargin=margin,
+            topMargin=v_margin,
+            bottomMargin=v_margin
         )
 
-        # Set PDF Metadata
+        # Metadata
         doc.title = f"{candidate_name} - {job_title or 'Resume'}"
         doc.author = candidate_name
         doc.subject = f"Tailored Resume for {job_title} at {company} ({job_url})"
-        doc.creator = "Resume Matcher Pro (Local Llama AI)"
+        doc.creator = f"Resume Matcher Pro (Template: {template.title()}, Budget: {page_length})"
 
         styles = getSampleStyleSheet()
 
-        # Custom ATS Typography Styles
+        # Font selection based on template
+        if template == "harvard":
+            main_font = "Times-Roman"
+            bold_font = "Times-Bold"
+            accent_color = colors.HexColor("#111827")  # Deep charcoal
+            bar_color = colors.HexColor("#94A3B8")
+        elif template == "modern":
+            main_font = "Helvetica"
+            bold_font = "Helvetica-Bold"
+            accent_color = colors.HexColor("#1E3A8A")  # Deep ATS Navy
+            bar_color = colors.HexColor("#3B82F6")     # Subtle Blue
+        else:
+            # Jake's Resume Standard (Tech standard)
+            main_font = "Helvetica"
+            bold_font = "Helvetica-Bold"
+            accent_color = colors.HexColor("#0F172A")  # Dark slate
+            bar_color = colors.HexColor("#CBD5E1")
+
         name_style = ParagraphStyle(
             "ATS_Name",
             parent=styles["Normal"],
-            fontName="Helvetica-Bold",
-            fontSize=18,
-            leading=22,
+            fontName=bold_font,
+            fontSize=name_size,
+            leading=name_leading,
             alignment=TA_CENTER,
             textColor=colors.HexColor("#0F172A"),
-            spaceAfter=3
+            spaceAfter=2
         )
 
         contact_style = ParagraphStyle(
             "ATS_Contact",
             parent=styles["Normal"],
-            fontName="Helvetica",
-            fontSize=9,
-            leading=13,
+            fontName=main_font,
+            fontSize=body_size - 0.5,
+            leading=body_leading,
             alignment=TA_CENTER,
             textColor=colors.HexColor("#334155"),
-            spaceAfter=8
+            spaceAfter=5
         )
 
         section_style = ParagraphStyle(
             "ATS_Section",
             parent=styles["Normal"],
-            fontName="Helvetica-Bold",
-            fontSize=11,
-            leading=14,
+            fontName=bold_font,
+            fontSize=sec_size,
+            leading=sec_leading,
             alignment=TA_LEFT,
-            textColor=colors.HexColor("#1E3A8A"),  # Deep ATS Navy
-            spaceBefore=8,
-            spaceAfter=2,
+            textColor=accent_color,
+            spaceBefore=sec_space_before,
+            spaceAfter=sec_space_after,
             keepWithNext=True
         )
 
         subhead_style = ParagraphStyle(
             "ATS_Subhead",
             parent=styles["Normal"],
-            fontName="Helvetica-Bold",
-            fontSize=10,
-            leading=13,
+            fontName=bold_font,
+            fontSize=body_size + 0.5,
+            leading=body_leading,
             textColor=colors.HexColor("#0F172A"),
-            spaceBefore=4,
+            spaceBefore=3,
             spaceAfter=1,
             keepWithNext=True
         )
@@ -228,9 +279,9 @@ class DocumentExporter:
         body_style = ParagraphStyle(
             "ATS_Body",
             parent=styles["Normal"],
-            fontName="Helvetica",
-            fontSize=9.5,
-            leading=13,
+            fontName=main_font,
+            fontSize=body_size,
+            leading=body_leading,
             textColor=colors.HexColor("#1E293B"),
             spaceBefore=1,
             spaceAfter=2
@@ -239,14 +290,14 @@ class DocumentExporter:
         bullet_style = ParagraphStyle(
             "ATS_Bullet",
             parent=styles["Normal"],
-            fontName="Helvetica",
-            fontSize=9.5,
-            leading=13,
-            leftIndent=14,
-            firstLineIndent=-10,
+            fontName=main_font,
+            fontSize=body_size,
+            leading=body_leading,
+            leftIndent=12,
+            firstLineIndent=-8,
             textColor=colors.HexColor("#1E293B"),
-            spaceBefore=1,
-            spaceAfter=1.5
+            spaceBefore=0.5,
+            spaceAfter=bullet_space
         )
 
         story = []
@@ -257,7 +308,7 @@ class DocumentExporter:
             if not line:
                 continue
 
-            # Heading 1: Candidate Name
+            # Heading 1: Name
             if line.startswith("# "):
                 name_text = self._escape_for_pdf(line[2:].strip())
                 story.append(Paragraph(name_text, name_style))
@@ -266,7 +317,7 @@ class DocumentExporter:
             elif line.startswith("## "):
                 sec_text = self._escape_for_pdf(line[3:].strip()).upper()
                 story.append(Paragraph(sec_text, section_style))
-                story.append(HRFlowable(width="100%", thickness=0.75, color=colors.HexColor("#CBD5E1"), spaceBefore=1, spaceAfter=4))
+                story.append(HRFlowable(width="100%", thickness=0.75, color=bar_color, spaceBefore=1, spaceAfter=3))
 
             # Heading 3: Role / Company / Dates
             elif line.startswith("### "):
@@ -291,21 +342,15 @@ class DocumentExporter:
         return output_path
 
     def _md_to_xml(self, text: str) -> str:
-        """Converts Markdown **bold** and *italic* into valid ReportLab XML tags with safe escaping."""
-        # 1. Escape XML characters
         escaped = self._escape_for_pdf(text)
-        # 2. Convert **bold** to <b>bold</b>
         bold_converted = re.sub(r"\*\*(.*?)\*\*", r"<b>\1</b>", escaped)
-        # 3. Convert *italic* to <i>italic</i>
         italic_converted = re.sub(r"\*(.*?)\*", r"<i>\1</i>", bold_converted)
         return italic_converted
 
     def _escape_for_pdf(self, text: str) -> str:
-        """Escapes &, <, > for ReportLab XML parser."""
         return text.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
 
     def _format_bold_spans(self, paragraph, text: str):
-        """Parses markdown bold and italic tags into native Word runs."""
         parts = re.split(r"(\*\*.*?\*\*)", text)
         for part in parts:
             if part.startswith("**") and part.endswith("**"):

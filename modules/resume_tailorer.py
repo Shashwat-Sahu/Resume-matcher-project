@@ -47,18 +47,39 @@ class ResumeTailorer:
         master_profile: Dict[str, Any],
         raw_master_text: str,
         job_data: Dict[str, Any],
-        ats_analysis: Dict[str, Any]
+        ats_analysis: Dict[str, Any],
+        page_length: str = "auto"
     ) -> str:
         """
-        Generates fully tailored Markdown resume using local Llama model.
+        Generates fully tailored Markdown resume using local Llama model with page length constraints.
         """
         job_title = job_data.get("title", "Target Position")
         company = job_data.get("company", "Target Company")
         missing_kw = ats_analysis.get("keyword_analysis", {}).get("missing_critical_keywords", [])[:10]
         matched_kw = ats_analysis.get("keyword_analysis", {}).get("matched_keywords", [])
 
+        if page_length == "1-page":
+            length_instruction = (
+                "PAGE LENGTH CONSTRAINT: STRICT 1-PAGE BUDGET.\n"
+                "- Keep Professional Summary to exactly 2 concise, high-impact sentences.\n"
+                "- Select and refine ONLY the top 3 most quantified, relevant bullets per job.\n"
+                "- Group skills into 3-4 dense, single-line categories.\n"
+                "- Keep the entire output concise so it fits cleanly on exactly ONE printed page."
+            )
+        elif page_length == "2-page":
+            length_instruction = (
+                "PAGE LENGTH CONSTRAINT: COMPREHENSIVE 2-PAGE SENIOR BUDGET.\n"
+                "- Provide an executive 3-4 line summary.\n"
+                "- Detail 4-5 quantified accomplishment bullets per role with architecture, metrics, and scale.\n"
+                "- Include extensive technical skills, projects, and domain expertise."
+            )
+        else:
+            length_instruction = "PAGE LENGTH CONSTRAINT: Natural balanced single-column layout."
+
         user_prompt = f"""
 TARGET ROLE: {job_title} at {company}
+
+{length_instruction}
 
 REQUIRED SKILLS & KEYWORDS TO INCORPORATE:
 Matched in Profile: {', '.join(matched_kw) if matched_kw else 'N/A'}

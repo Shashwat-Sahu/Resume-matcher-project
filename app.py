@@ -396,10 +396,36 @@ with tab4:
     elif not st.session_state.job_data:
         st.info("Please analyze a Target Job in Tab 2.")
     else:
+        # ATS Template & Page Length Controls
+        col_opt1, col_opt2 = st.columns(2)
+        with col_opt1:
+            template_label = st.selectbox(
+                "🎨 ATS PDF Template Style",
+                [
+                    "Jake's Tech Standard (Single-Column Sans-Serif - Gold Standard)",
+                    "Harvard Ivy Standard (Classic Serif - Times New Roman / Executive)",
+                    "Modern Minimalist (FAANG Accent Blue)"
+                ],
+                help="Jake's Resume is the tech industry gold standard. Harvard Standard is preferred for executive, finance, and consulting roles."
+            )
+            template_code = "jake" if "Jake" in template_label else ("harvard" if "Harvard" in template_label else "modern")
+
+        with col_opt2:
+            length_label = st.selectbox(
+                "📏 Target Resume Page Length",
+                [
+                    "Strict 1-Page (Dense & Compact - Best for < 7 Years)",
+                    "Standard 2-Page (Comprehensive Senior Depth - 7+ Years)",
+                    "Auto / Flexible (Natural Flow)"
+                ],
+                help="Strict 1-Page applies 0.5-inch margins and tight bullet budgeting so content never spills onto a second page."
+            )
+            length_code = "1-page" if "1-Page" in length_label else ("2-page" if "2-Page" in length_label else "auto")
+
         col_gen1, col_gen2 = st.columns([2, 1])
         with col_gen1:
             if st.button("🚀 Generate Tailored Resume with Local Llama", type="primary", use_container_width=True):
-                with st.spinner(f"Tailoring resume with {model_choice}..."):
+                with st.spinner(f"Tailoring resume with {model_choice} (Template: {template_code.title()}, Budget: {length_code})..."):
                     tailorer = ResumeTailorer(llm_client)
                     profile = st.session_state.master_profile or {}
                     if not st.session_state.ats_results:
@@ -412,7 +438,8 @@ with tab4:
                         master_profile=profile,
                         raw_master_text=st.session_state.master_resume_text,
                         job_data=st.session_state.job_data,
-                        ats_analysis=st.session_state.ats_results
+                        ats_analysis=st.session_state.ats_results,
+                        page_length=length_code
                     )
                     st.session_state.tailored_resume_md = tailored_md
 
@@ -441,11 +468,13 @@ with tab4:
                         candidate_name=cand_name,
                         job_title=target_title,
                         company=company,
-                        job_url=target_url
+                        job_url=target_url,
+                        template=template_code,
+                        page_length=length_code
                     )
 
                     try:
-                        docx_file = exporter.export_docx(tailored_md, filename=f"{base_name}.docx")
+                        docx_file = exporter.export_docx(tailored_md, filename=f"{base_name}.docx", page_length=length_code)
                     except Exception:
                         docx_file = ""
 
@@ -541,11 +570,13 @@ with tab4:
                     candidate_name=cand_name,
                     job_title=target_title,
                     company=company,
-                    job_url=target_url
+                    job_url=target_url,
+                    template=template_code,
+                    page_length=length_code
                 )
                 with open(pdf_path, "rb") as f:
                     st.download_button(
-                        label="📕 Download PDF (Selectable ATS Text-Layer)",
+                        label=f"📕 Download PDF ({template_code.title()} • {length_code})",
                         data=f.read(),
                         file_name=f"{base_name}.pdf",
                         mime="application/pdf",
@@ -556,7 +587,7 @@ with tab4:
 
         with exp_col2:
             try:
-                docx_path = exporter.export_docx(st.session_state.tailored_resume_md, filename=f"{base_name}.docx")
+                docx_path = exporter.export_docx(st.session_state.tailored_resume_md, filename=f"{base_name}.docx", page_length=length_code)
                 with open(docx_path, "rb") as f:
                     st.download_button(
                         label="📄 Download DOCX (Safest for Workday)",

@@ -1,5 +1,42 @@
 [
   {
+    "id": "20261120_230017_NovaTech_Solutions_Senior_Staff_Cloud_Platform_Engineer",
+    "created_at": "2026-11-20 23:00:17",
+    "candidate_name": "Alex Rivera",
+    "job_title": "Senior/Staff Cloud Platform Engineer",
+    "company": "NovaTech Solutions",
+    "job_url": "Direct Text Input",
+    "original_ats_score": 49,
+    "tailored_ats_score": 60,
+    "ats_score_delta": 11,
+    "breakdown": {
+      "keyword_match_score": 52,
+      "quantification_impact_score": 36,
+      "formatting_safety_score": 100
+    },
+    "top_skills": [
+      "Python",
+      "Go",
+      "PostgreSQL",
+      "AWS",
+      "Kubernetes",
+      "Terraform"
+    ],
+    "newly_matched_keywords": [
+      "CI/CD automation",
+      "Container orchestration",
+      "Grafana",
+      "Helm charts",
+      "Kubernetes clusters"
+    ],
+    "files": {
+      "pdf": "D:\\AI projects\\resume matcher project\\output\\Resume_NovaTech_Solutions_Senior_Staff_Cloud_Platform_Engineer.pdf",
+      "docx": "D:\\AI projects\\resume matcher project\\output\\Resume_NovaTech_Solutions_Senior_Staff_Cloud_Platform_Engineer.docx",
+      "markdown": "D:\\AI projects\\resume matcher project\\output\\Resume_NovaTech_Solutions_Senior_Staff_Cloud_Platform_Engineer.md",
+      "interview_prep": "D:\\AI projects\\resume matcher project\\output\\Resume_NovaTech_Solutions_Senior_Staff_Cloud_Platform_Engineer_interview_prep.json"
+    }
+  },
+  {
     "id": "20261120_225554_NovaTech_Solutions_Staff___Senior_Cloud_Platform_Engineer",
     "created_at": "2026-11-20 22:55:54",
     "candidate_name": "Alex Rivera",

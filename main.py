@@ -34,10 +34,13 @@ def run_pipeline(
     job_url: str = "",
     model: str = DEFAULT_MODEL,
     host: str = DEFAULT_OLLAMA_HOST,
-    output_name: str = ""
+    output_name: str = "",
+    template: str = "jake",
+    page_length: str = "auto"
 ):
     print_banner()
     print(f"[*] Initializing with Local Model: {model} at {host}")
+    print(f"[*] ATS PDF Template: {template.title()} | Target Page Budget: {page_length}")
     llm = LocalLLMClient(host=host, model=model)
     health = llm.check_health()
     if health.get("connected"):
@@ -84,9 +87,9 @@ def run_pipeline(
     print(f"      Keyword Match: {ats_before['breakdown']['keyword_match_score']}%")
 
     # 4. Tailor Resume with Llama
-    print(f"\n[4/6] Tailoring Resume using local {model}...")
+    print(f"\n[4/6] Tailoring Resume using local {model} (Page Budget: {page_length})...")
     tailorer = ResumeTailorer(llm)
-    tailored_md = tailorer.generate_tailored_resume(profile, raw_resume, job_data, ats_before)
+    tailored_md = tailorer.generate_tailored_resume(profile, raw_resume, job_data, ats_before, page_length=page_length)
 
     # 5. RE-RUN ATS ON TAILORED RESUME
     print(f"\n[5/6] Re-Running ATS Audit on Tailored Resume...")
@@ -134,14 +137,16 @@ def run_pipeline(
         candidate_name=candidate_name,
         job_title=job_title,
         company=company,
-        job_url=resolved_url
+        job_url=resolved_url,
+        template=template,
+        page_length=page_length
     )
-    print(f"      [✓] Text-Layer PDF: {pdf_file}")
+    print(f"      [✓] Text-Layer PDF: {pdf_file} ({template.title()} • {page_length})")
 
     # Export Word DOCX
     docx_file = ""
     try:
-        docx_file = exporter.export_docx(tailored_md, f"{output_name}.docx")
+        docx_file = exporter.export_docx(tailored_md, f"{output_name}.docx", page_length=page_length)
         print(f"      [✓] Word DOCX: {docx_file} (ATS Single-Column Format)")
     except Exception as e:
         print(f"      [!] DOCX export skipped ({e}).")
@@ -190,6 +195,8 @@ def main():
     parser.add_argument("--model", "-m", default=DEFAULT_MODEL, help="Local Llama model name (e.g. llama3.1:8b, llama3.2:3b, llama3.3:70b)")
     parser.add_argument("--host", default=DEFAULT_OLLAMA_HOST, help="Ollama host endpoint")
     parser.add_argument("--output", "-o", default="", help="Base filename for generated resume")
+    parser.add_argument("--template", "-t", default="jake", choices=["jake", "harvard", "modern"], help="ATS PDF Template: 'jake' (tech sans-serif), 'harvard' (classic serif), 'modern' (accent)")
+    parser.add_argument("--length", "-l", default="auto", choices=["1-page", "2-page", "auto"], help="Page budget: '1-page' (strict 1-page), '2-page' (senior), 'auto'")
     parser.add_argument("--web", action="store_true", help="Launch Streamlit web UI")
 
     args = parser.parse_args()
@@ -211,7 +218,9 @@ def main():
         job_url=args.url,
         model=args.model,
         host=args.host,
-        output_name=args.output
+        output_name=args.output,
+        template=args.template,
+        page_length=args.length
     )
 
 if __name__ == "__main__":

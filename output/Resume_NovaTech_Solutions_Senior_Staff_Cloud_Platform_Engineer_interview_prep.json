@@ -1,0 +1,57 @@
+{
+  "elevator_pitch": "Hi, I'm Alex Rivera, a seasoned Senior Cloud Platform Engineer with 7+ years of experience designing, scaling, and maintaining high-throughput cloud-native microservices, Kubernetes clusters, and cloud infrastructure. I've led engineering teams to deliver scalable SaaS solutions, improved system uptime, and reduced API response latency. I'm passionate about driving observability and reliability initiatives across microservices and have a proven track record of implementing robust CI/CD pipelines and automated testing. I'm excited to bring my expertise to a Senior/Staff Cloud Platform Engineer role and contribute to a team that values innovation and collaboration.",
+  "top_technical_questions": [
+    {
+      "question": "Can you explain your experience with designing and deploying high-throughput microservices on AWS EKS?",
+      "why_asked": "To assess the candidate's ability to design and deploy scalable cloud-native microservices, and their experience with AWS EKS.",
+      "recommended_talking_points": [
+        "Highlight your experience with designing and deploying microservices on AWS EKS, including any relevant architecture decisions.",
+        "Discuss your approach to ensuring high-throughput and scalability in microservices, including any relevant metrics or monitoring tools used.",
+        "Emphasize your experience with AWS services, such as EKS, and how you've utilized them to build scalable and efficient microservices."
+      ]
+    },
+    {
+      "question": "How do you approach optimizing database query and caching in cloud-native applications?",
+      "why_asked": "To evaluate the candidate's understanding of database query optimization and caching in cloud-native applications.",
+      "recommended_talking_points": [
+        "Discuss your experience with optimizing database queries and caching in cloud-native applications, including any relevant tools or techniques used.",
+        "Highlight your understanding of the importance of caching in reducing API response latency and improving system performance.",
+        "Emphasize your experience with Redis and other caching solutions, and how you've utilized them to improve system performance."
+      ]
+    },
+    {
+      "question": "Can you walk me through your experience with CI/CD automation and container orchestration?",
+      "why_asked": "To assess the candidate's ability to design and implement robust CI/CD pipelines and container orchestration.",
+      "recommended_talking_points": [
+        "Highlight your experience with designing and implementing CI/CD pipelines using GitHub Actions and other tools.",
+        "Discuss your approach to container orchestration, including any relevant tools or techniques used, such as Kubernetes and Docker.",
+        "Emphasize your experience with automating testing and deployment, and how you've utilized CI/CD pipelines to improve system reliability and reduce downtime."
+      ]
+    }
+  ],
+  "top_behavioral_questions": [
+    {
+      "question": "Tell me about a time when you had to lead a team to deliver a complex project with tight deadlines.",
+      "star_approach": "Use the STAR approach to structure your response: Situation, Task, Action, Result. Highlight your leadership skills, ability to manage complex projects, and experience working with tight deadlines."
+    },
+    {
+      "question": "Can you describe a situation where you had to troubleshoot a complex technical issue and resolve it quickly?",
+      "star_approach": "Use the STAR approach to structure your response: Situation, Task, Action, Result. Highlight your problem-solving skills, ability to troubleshoot complex technical issues, and experience resolving issues quickly."
+    }
+  ],
+  "potential_red_flags_or_gaps": [
+    {
+      "gap": "Lack of experience with Terraform and Helm charts.",
+      "how_to_bridge": "Highlight your experience with infrastructure as code and container orchestration, and emphasize your willingness to learn and adapt to new tools and technologies."
+    },
+    {
+      "gap": "Limited experience with Go and PostgreSQL.",
+      "how_to_bridge": "Discuss your experience with other programming languages and databases, and highlight your ability to quickly learn and adapt to new technologies."
+    }
+  ],
+  "questions_to_ask_interviewer": [
+    "Can you tell me more about the team I'll be working with and the company culture?",
+    "What are the biggest challenges facing the team or department right now, and how do you see this role contributing to solving them?",
+    "Can you provide more information about the company's vision and goals for the cloud platform engineering team?"
+  ]
+}
