@@ -281,21 +281,21 @@ class JobSearcher:
             board_queries = [("Ashby", f'"{clean_role}" {loc_clause} site:jobs.ashbyhq.com')]
         elif target_board == "LinkedIn (Single View)":
             board_queries = [
-                ("LinkedIn", f'"{clean_role}" {loc_clause} site:linkedin.com/jobs/view'),
-                ("LinkedIn", f'{clean_role} {loc_clause} site:linkedin.com/jobs/view'),
-                ("LinkedIn", f'{clean_role} {loc_clause} site:in.linkedin.com/jobs/view'),
-                ("LinkedIn", f'"{clean_role}" {skill_clause} site:linkedin.com/jobs/view')
+                ("LinkedIn", f'"{clean_role}" {loc_clause} site:linkedin.com/jobs/view -"no longer accepting" -"not currently accepting" -"closed"'),
+                ("LinkedIn", f'{clean_role} {loc_clause} site:linkedin.com/jobs/view -"no longer accepting" -"not currently accepting" -"closed"'),
+                ("LinkedIn", f'{clean_role} {loc_clause} site:in.linkedin.com/jobs/view -"no longer accepting" -"not currently accepting" -"closed"'),
+                ("LinkedIn", f'"{clean_role}" {skill_clause} site:linkedin.com/jobs/view -"no longer accepting" -"not currently accepting"')
             ]
         else:
             # All Sources: query each ATS host with individual requisition constraints
             board_queries = [
                 ("Workday", f'"{clean_role}" {skill_clause} {loc_clause} "Job Description" site:myworkdayjobs.com'),
                 ("Lever", f'"{clean_role}" {skill_clause} {loc_clause} site:jobs.lever.co'),
-                ("LinkedIn", f'"{clean_role}" {loc_clause} site:linkedin.com/jobs/view'),
+                ("LinkedIn", f'"{clean_role}" {loc_clause} site:linkedin.com/jobs/view -"no longer accepting" -"not currently accepting"'),
                 ("Greenhouse", f'"{clean_role}" {skill_clause} {loc_clause} site:boards.greenhouse.io'),
                 ("Workday", f'{clean_role} {loc_clause} "Job Description" site:myworkdayjobs.com'),
                 ("Lever", f'{clean_role} {loc_clause} site:jobs.lever.co'),
-                ("LinkedIn", f'{clean_role} {loc_clause} site:in.linkedin.com/jobs/view'),
+                ("LinkedIn", f'{clean_role} {loc_clause} site:in.linkedin.com/jobs/view -"no longer accepting" -"not currently accepting"'),
                 ("Greenhouse", f'{clean_role} {loc_clause} site:boards.greenhouse.io'),
                 ("Ashby", f'{clean_role} {loc_clause} site:jobs.ashbyhq.com')
             ]
@@ -320,7 +320,7 @@ class JobSearcher:
                             norm_url = re.sub(r"/apply/?$", "", href).split("?")[0].rstrip("/")
 
                             # STRICT VALIDATION: Must match single requisition criteria
-                            if norm_url and norm_url not in seen_urls and self._is_individual_job(href, title):
+                            if norm_url and norm_url not in seen_urls and self._is_individual_job(href, title, snippet):
                                 seen_urls.add(norm_url)
                                 clean_t = self._clean_job_title(title, href, source_name)
                                 candidates.append({
@@ -359,9 +359,81 @@ class JobSearcher:
         # Return empty list if no individual requisitions match (never return generic directory search sets)
         return []
 
-    def verify_job_url_active(self, url: str, timeout: float = 3.2) -> bool:
+    def _verify_linkedin_active(self, url: str, headers: Dict[str, str], timeout: float = 3.5) -> bool:
         """
-        Actively verifies that a candidate job posting URL is live and open.
+        Specialized active verifier for LinkedIn postings.
+        Checks both LinkedIn Guest API and direct page HTML.
+        Strictly rejects postings that state 'Not currently accepting applications',
+        'No longer accepting applications', 'Applications are closed', or have closed status tags.
+        Guarantees that unverified, rate-limited, or closed LinkedIn jobs are never marked active.
+        """
+        job_id_match = re.search(r"(\d{6,})", url)
+        if not job_id_match:
+            return False
+        jid = job_id_match.group(1)
+
+        dead_signals = [
+            "not currently accepting applications",
+            "no longer accepting applications",
+            "not accepting applications",
+            "applications are no longer being accepted",
+            "applications are closed",
+            "this job is closed",
+            "this position has been closed",
+            "this job is no longer available",
+            "this position is no longer available",
+            "position has been filled",
+            "recruitment target, not an open vacancy",
+            "planned position, not currently accepting",
+            "planned not accepting applications",
+            "top-card-layout__entity-status--closed",
+            "closed-job-banner",
+            "closed-tag",
+            "entity-status--closed",
+            "topcard__flavor--closed",
+            "job-details-jobs-unified-top-card__closed-tag",
+            "this job posting has expired"
+        ]
+
+        html_candidates = []
+
+        # 1. Try Guest API (bypasses authwall and returns structured HTML)
+        api_url = f"https://www.linkedin.com/jobs-guest/jobs/api/jobPosting/{jid}"
+        try:
+            api_resp = requests.get(api_url, headers=headers, timeout=timeout)
+            if api_resp.status_code in [404, 410]:
+                return False
+            if api_resp.status_code == 200 and len(api_resp.text) > 300:
+                html_candidates.append(api_resp.text.lower())
+        except Exception:
+            pass
+
+        # 2. Try direct job view URL
+        try:
+            resp = requests.get(url, headers=headers, timeout=timeout, allow_redirects=True)
+            if resp.status_code in [404, 410]:
+                return False
+            if resp.status_code == 200 and len(resp.text) > 300:
+                html_candidates.append(resp.text.lower())
+        except Exception:
+            pass
+
+        # If neither endpoint could be retrieved (e.g. rate limited 429, challenge, or connection timeout),
+        # NEVER return True! Require affirmative confirmation that the job is live and accepting applications.
+        if not html_candidates:
+            return False
+
+        # If ANY retrieved content contains dead signals, reject the posting
+        for html_text in html_candidates:
+            for sig in dead_signals:
+                if sig in html_text:
+                    return False
+
+        return True
+
+    def verify_job_url_active(self, url: str, timeout: float = 3.5) -> bool:
+        """
+        Actively verifies that a candidate job posting URL is live, open, and accepting applications.
         Rejects 404/410, Greenhouse error redirects (?error=true), Lever/Ashby missing UUID
         redirects, Workday portal redirects, and notices that the job has been filled or closed.
         """
@@ -374,6 +446,11 @@ class JobSearcher:
             "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
             "Accept-Language": "en-US,en;q=0.9"
         }
+
+        # LinkedIn postings get strict dedicated liveness inspection
+        if "linkedin.com" in url.lower():
+            return self._verify_linkedin_active(url, headers=headers, timeout=timeout)
+
         try:
             resp = requests.get(url, headers=headers, timeout=timeout, allow_redirects=True)
 
@@ -408,6 +485,12 @@ class JobSearcher:
                 "this job is no longer available",
                 "this position is no longer available",
                 "no longer accepting applications",
+                "not currently accepting applications",
+                "not accepting applications",
+                "applications are no longer being accepted",
+                "applications are closed",
+                "this job is closed",
+                "this position has been closed",
                 "job is not found",
                 "job not found",
                 "position has been filled",
@@ -415,6 +498,12 @@ class JobSearcher:
                 "job requisition is no longer open",
                 "this posting has expired",
                 "the job you are looking for is no longer open",
+                "recruitment target, not an open vacancy",
+                "planned position, not currently accepting",
+                "top-card-layout__entity-status--closed",
+                "closed-job-banner",
+                "closed-tag",
+                "entity-status--closed",
                 "not found – 404 error",
                 "not found - 404 error",
                 "404 - page not found",
@@ -428,21 +517,34 @@ class JobSearcher:
 
             return True
         except Exception:
-            # If Workday or LinkedIn triggers a challenge or timeout, but URL strictly has a valid requisition slug, allow it
-            if "myworkdayjobs.com" in url.lower() and "/job/" in url.lower():
-                return True
-            if "linkedin.com" in url.lower() and re.search(r"linkedin\.com/jobs/view/[^?]*\d{6,}", url.lower()):
-                return True
             return False
 
-    def _is_individual_job(self, url: str, title: str) -> bool:
+    def _is_individual_job(self, url: str, title: str, snippet: str = "") -> bool:
         """
         STRICT VALIDATION:
         Returns True ONLY if the URL and title represent a single individual job posting.
-        Returns False for company portal landing pages, search forms, and directory sets.
+        Returns False for company portal landing pages, search forms, directory sets,
+        or postings that explicitly indicate in title/snippet that applications are closed.
         """
         url_lower = url.lower()
         title_lower = title.lower()
+        snippet_lower = snippet.lower()
+        full_meta = f"{title_lower} {snippet_lower}"
+
+        # 0. Reject postings that explicitly advertise they are closed or not accepting applications
+        dead_meta_patterns = [
+            "no longer accepting applications",
+            "not currently accepting applications",
+            "not accepting applications",
+            "applications are no longer being accepted",
+            "applications are closed",
+            "this job is closed",
+            "recruitment target, not an open vacancy",
+            "planned position, not currently accepting"
+        ]
+        for dp in dead_meta_patterns:
+            if dp in full_meta:
+                return False
 
         # Reject ad links, click trackers, and referral aggregators
         if any(ad in url_lower for ad in ["bing.com/aclick", "google.com/aclk", "doubleclick.net", "catchwork.jobs", "jobrapido", "click?"]):

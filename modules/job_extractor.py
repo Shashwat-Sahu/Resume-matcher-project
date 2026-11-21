@@ -39,13 +39,69 @@ class JobExtractor:
                 "AppleWebKit/537.36 (KHTML, like Gecko) "
                 "Chrome/124.0.0.0 Safari/537.36"
             ),
-            "Accept-Language": "en-US,en;q=0.9"
+            "Accept-Language": "en-US,en;q=0.9",
+            "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8"
         }
+
+        dead_signals = [
+            "this job is no longer available",
+            "this position is no longer available",
+            "no longer accepting applications",
+            "not currently accepting applications",
+            "not accepting applications",
+            "applications are no longer being accepted",
+            "applications are closed",
+            "this job is closed",
+            "this position has been closed",
+            "job is not found",
+            "job not found",
+            "the job you are looking for is no longer open",
+            "position has been filled",
+            "recruitment target, not an open vacancy",
+            "planned position, not currently accepting",
+            "planned not accepting applications",
+            "top-card-layout__entity-status--closed",
+            "closed-job-banner",
+            "closed-tag",
+            "entity-status--closed",
+            "not found – 404 error",
+            "not found - 404 error",
+            "404 not found"
+        ]
+
+        # Specialized handling for LinkedIn job postings
+        if "linkedin.com" in url.lower():
+            jid_match = re.search(r"(\d{6,})", url)
+            if jid_match:
+                jid = jid_match.group(1)
+                api_url = f"https://www.linkedin.com/jobs-guest/jobs/api/jobPosting/{jid}"
+                try:
+                    api_resp = requests.get(api_url, headers=headers, timeout=10)
+                    if api_resp.status_code in [404, 410]:
+                        raise RuntimeError(f"LinkedIn posting not found (404) at {url}. The posting has been removed by the employer.")
+                    if api_resp.status_code == 200:
+                        api_text_lower = api_resp.text.lower()
+                        for sig in dead_signals:
+                            if sig in api_text_lower:
+                                raise RuntimeError(f"LinkedIn posting at {url} is not currently accepting applications.")
+                        # Try to parse clean description directly from Guest API
+                        try:
+                            from bs4 import BeautifulSoup
+                            soup = BeautifulSoup(api_resp.text, "html.parser")
+                            desc_elem = soup.find(class_=re.compile(r"description__text|show-more-less-html__markup|decoratedJobPosting"))
+                            if desc_elem and len(desc_elem.get_text(strip=True)) > 150:
+                                return self._clean_text(desc_elem.get_text(separator="\n"))
+                        except Exception:
+                            pass
+                except RuntimeError:
+                    raise
+                except Exception:
+                    pass
 
         try:
             resp = requests.get(url, headers=headers, timeout=15, allow_redirects=True)
-            if resp.status_code == 404:
-                raise RuntimeError(f"Job not found (404) at {url}. This posting has been closed or removed by the employer.")
+            if resp.status_code in [404, 410]:
+                raise RuntimeError(f"Job not found ({resp.status_code}) at {url}. This posting has been closed or removed by the employer.")
             resp.raise_for_status()
             html = resp.text
 
@@ -55,19 +111,9 @@ class JobExtractor:
                 raise RuntimeError(f"Job posting at {url} has expired or is no longer accepting applications.")
 
             body_lower = html.lower()
-            dead_signals = [
-                "this job is no longer available",
-                "this position is no longer available",
-                "no longer accepting applications",
-                "job is not found",
-                "job not found",
-                "the job you are looking for is no longer open",
-                "not found – 404 error",
-                "not found - 404 error"
-            ]
             for sig in dead_signals:
                 if sig in body_lower:
-                    raise RuntimeError(f"Job posting is closed: employer notice states '{sig}'.")
+                    raise RuntimeError(f"Job posting at {url} is closed: employer notice states '{sig}'.")
         except RuntimeError:
             raise
         except Exception as e:
