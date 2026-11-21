@@ -71,14 +71,25 @@ class JobSearcher:
         titles = [e.get("title", "").lower() for e in exps if isinstance(e, dict)]
         titles_str = " ".join(titles)
 
+        # 1. Staff / Principal / Architect / Director
         if any(w in titles_str for w in ["staff", "principal", "architect", "director", "vp"]) or years >= 8:
             tier, label = 4, "Staff / Lead (8+ Yrs)"
-        elif any(w in titles_str for w in ["senior", "sr.", "lead", "sde 3", "sde iii"]) or years >= 5:
+        # 2. Senior / Tech Lead / SDE 3
+        elif any(w in titles_str for w in ["senior", "sr.", "lead", "sde 3", "sde iii", "sde-3"]) or years >= 5:
             tier, label = 3, "Senior (5-8 Yrs)"
-        elif any(w in titles_str for w in ["junior", "associate", "trainee", "graduate", "sde 1", "sde i"]) or years <= 2:
+        # 3. Explicit SDE 2 / Mid-Level
+        elif any(w in titles_str for w in [
+            "sde 2", "sde ii", "sde-2", "sde-ii",
+            "software engineer 2", "software engineer ii",
+            "software development engineer 2", "software development engineer ii",
+            "developer 2", "developer ii", "engineer 2", "engineer ii"
+        ]) or (years >= 2 and years < 5):
+            tier, label = 2, "Mid-Level / SDE 2 (2-5 Yrs)"
+        # 4. Junior / Early Career / SDE 1
+        elif any(w in titles_str for w in ["junior", "associate", "trainee", "graduate", "sde 1", "sde i", "sde-1"]) or years <= 2:
             tier, label = 1, "Early Career / Junior (0-2 Yrs)"
         else:
-            tier, label = 2, "Mid-Level (2-5 Yrs)"
+            tier, label = 2, "Mid-Level / SDE 2 (2-5 Yrs)"
 
         return {
             "years": years,
@@ -197,12 +208,29 @@ class JobSearcher:
         scored_jobs = []
         for job in raw_jobs:
             job_sen = self.detect_job_seniority(job.get("title", ""), job.get("snippet", ""))
+            job_title_lower = job.get("title", "").lower()
 
-            # SENIORITY GUARD: If filter_tier is active, drop jobs with major experience mismatches
+            # 1. HARD BLOCK ON INTERNSHIPS:
+            # If candidate is a working professional / experienced engineer (Tier >= 1, e.g. SDE 1, SDE 2, Senior),
+            # NEVER suggest an internship!
+            if filter_tier >= 1 and (
+                job_sen["tier"] == 0 or
+                any(w in job_title_lower for w in ["intern", "internship", "co-op", "stipend", "fellowship"])
+            ):
+                continue
+
+            # 2. HARD BLOCK ON STAFF/PRINCIPAL FOR JUNIOR & MID-LEVEL:
+            # If candidate is SDE 1 or SDE 2 (Tier <= 2), NEVER suggest Staff / Principal / Architect / Lead!
+            if filter_tier <= 2 and (
+                job_sen["tier"] >= 4 or
+                any(w in job_title_lower for w in ["staff", "principal", "architect", "director", "vp", "head of"])
+            ):
+                continue
+
+            # 3. SENIORITY GUARD: If filter_tier is active, drop jobs with major experience mismatches
             if filter_tier != -1:
                 tier_diff = job_sen["tier"] - filter_tier
                 if abs(tier_diff) >= 2:
-                    # Mismatch! E.g. Candidate is Mid-Level (2), job is Staff (4) -> diff = 2 -> DISCARD!
                     continue
 
             score_meta = self.score_job_against_profile(job, candidate_profile, filter_tier)
@@ -253,19 +281,21 @@ class JobSearcher:
             board_queries = [("Ashby", f'"{clean_role}" {loc_clause} site:jobs.ashbyhq.com')]
         elif target_board == "LinkedIn (Single View)":
             board_queries = [
-                ("LinkedIn", f'"{clean_role}" {skill_clause} {loc_clause} site:linkedin.com/jobs/view'),
-                ("LinkedIn", f'{clean_role} {loc_clause} site:linkedin.com/jobs/view')
+                ("LinkedIn", f'"{clean_role}" {loc_clause} site:linkedin.com/jobs/view'),
+                ("LinkedIn", f'{clean_role} {loc_clause} site:linkedin.com/jobs/view'),
+                ("LinkedIn", f'{clean_role} {loc_clause} site:in.linkedin.com/jobs/view'),
+                ("LinkedIn", f'"{clean_role}" {skill_clause} site:linkedin.com/jobs/view')
             ]
         else:
             # All Sources: query each ATS host with individual requisition constraints
             board_queries = [
                 ("Workday", f'"{clean_role}" {skill_clause} {loc_clause} "Job Description" site:myworkdayjobs.com'),
                 ("Lever", f'"{clean_role}" {skill_clause} {loc_clause} site:jobs.lever.co'),
-                ("LinkedIn", f'"{clean_role}" {skill_clause} {loc_clause} site:linkedin.com/jobs/view'),
+                ("LinkedIn", f'"{clean_role}" {loc_clause} site:linkedin.com/jobs/view'),
                 ("Greenhouse", f'"{clean_role}" {skill_clause} {loc_clause} site:boards.greenhouse.io'),
                 ("Workday", f'{clean_role} {loc_clause} "Job Description" site:myworkdayjobs.com'),
                 ("Lever", f'{clean_role} {loc_clause} site:jobs.lever.co'),
-                ("LinkedIn", f'{clean_role} {loc_clause} site:linkedin.com/jobs/view'),
+                ("LinkedIn", f'{clean_role} {loc_clause} site:in.linkedin.com/jobs/view'),
                 ("Greenhouse", f'{clean_role} {loc_clause} site:boards.greenhouse.io'),
                 ("Ashby", f'{clean_role} {loc_clause} site:jobs.ashbyhq.com')
             ]
@@ -398,8 +428,10 @@ class JobSearcher:
 
             return True
         except Exception:
-            # If Workday triggers a Cloudflare challenge or timeout, but URL strictly has /job/, allow it
+            # If Workday or LinkedIn triggers a challenge or timeout, but URL strictly has a valid requisition slug, allow it
             if "myworkdayjobs.com" in url.lower() and "/job/" in url.lower():
+                return True
+            if "linkedin.com" in url.lower() and re.search(r"linkedin\.com/jobs/view/[^?]*\d{6,}", url.lower()):
                 return True
             return False
 
@@ -471,9 +503,13 @@ class JobSearcher:
                 return False
             return True
 
-        # LinkedIn: MUST have '/jobs/view/<id>'
+        # LinkedIn: MUST have '/jobs/view/[slug-]id'
         if "linkedin.com" in url_lower:
-            if not re.search(r"linkedin\.com/jobs/view/\d+", url_lower):
+            # Must contain an individual job view path with numeric ID (at least 6 digits)
+            if not re.search(r"linkedin\.com/jobs/view/[^?]*\d{6,}", url_lower):
+                return False
+            # Reject directory searches and title listings
+            if any(p in url_lower for p in ["/jobs/search", "/jobs/collections", "-jobs-", "/jobs/browse"]):
                 return False
             return True
 
