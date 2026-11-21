@@ -30,11 +30,104 @@ except ImportError:
 
 
 class JobSearcher:
+    MONTHS = {
+        'jan': 1, 'feb': 2, 'mar': 3, 'apr': 4, 'may': 5, 'jun': 6,
+        'jul': 7, 'aug': 8, 'sep': 9, 'oct': 10, 'nov': 11, 'dec': 12
+    }
+
     def __init__(self):
         pass
 
-    def extract_profile_anchors(self, candidate_profile: Dict[str, Any]) -> Dict[str, Any]:
-        """Extracts top target titles and defining anchor skills from candidate profile."""
+    def calculate_candidate_seniority(self, candidate_profile: Dict[str, Any], raw_text: str = "") -> Dict[str, Any]:
+        """
+        Accurately calculates candidate's total years of experience and seniority tier (0-4)
+        from experience date ranges, job titles, and resume summary.
+        """
+        total_months = 0
+        exps = candidate_profile.get("experience", [])
+        for exp in exps:
+            if not isinstance(exp, dict):
+                continue
+            dates = exp.get("dates", "")
+            if not dates:
+                continue
+            parts = re.split(r"\s*(?:[-–—\u2013\u2014]|\bto\b)\s*", dates, flags=re.I)
+            if len(parts) >= 2:
+                sy, sm = self._parse_date_string(parts[0])
+                ey, em = self._parse_date_string(parts[1])
+                if sy and ey:
+                    diff = (ey - sy) * 12 + (em - sm)
+                    if diff > 0:
+                        total_months += diff
+
+        years = round(total_months / 12, 1)
+        if years == 0:
+            m = re.search(r"(\d+)\+?\s*years(?:\s+of)?\s+experience", raw_text or candidate_profile.get("summary", ""), re.I)
+            if m:
+                years = float(m.group(1))
+            else:
+                years = max(1.5, len(exps) * 1.5)
+
+        titles = [e.get("title", "").lower() for e in exps if isinstance(e, dict)]
+        titles_str = " ".join(titles)
+
+        if any(w in titles_str for w in ["staff", "principal", "architect", "director", "vp"]) or years >= 8:
+            tier, label = 4, "Staff / Lead (8+ Yrs)"
+        elif any(w in titles_str for w in ["senior", "sr.", "lead", "sde 3", "sde iii"]) or years >= 5:
+            tier, label = 3, "Senior (5-8 Yrs)"
+        elif any(w in titles_str for w in ["junior", "associate", "trainee", "graduate", "sde 1", "sde i"]) or years <= 2:
+            tier, label = 1, "Early Career / Junior (0-2 Yrs)"
+        else:
+            tier, label = 2, "Mid-Level (2-5 Yrs)"
+
+        return {
+            "years": years,
+            "tier": tier,
+            "label": label
+        }
+
+    def _parse_date_string(self, d_str: str):
+        d_str = d_str.strip().lower()
+        if any(w in d_str for w in ["present", "current", "now"]):
+            return 2026, 11
+        m = re.search(r"([a-z]{3,9})[\s,]+(20\d\d|19\d\d)", d_str)
+        if m:
+            month = self.MONTHS.get(m.group(1)[:3], 6)
+            return int(m.group(2)), month
+        m_yr = re.search(r"(20\d\d|19\d\d)", d_str)
+        if m_yr:
+            return int(m_yr.group(1)), 6
+        return None, None
+
+    def detect_job_seniority(self, title: str, snippet: str = "") -> Dict[str, Any]:
+        """
+        Classifies the target job's required seniority tier (0-4) based on
+        title prefixes, suffixes, and requirements phrases in the text.
+        """
+        t_lower = title.lower()
+        text = (t_lower + " " + snippet).lower()
+
+        # Tier 4: Staff / Principal / Architect / Executive
+        if any(w in t_lower for w in ["staff", "principal", "architect", "lead architect", "director", "vp", "head of"]) or any(w in text for w in ["8+ years", "10+ years", "staff software engineer", "staff engineer"]):
+            return {"tier": 4, "label": "Staff / Lead (8+ Yrs)"}
+
+        # Tier 3: Senior / Tech Lead
+        if any(w in t_lower for w in ["senior", "sr.", "sr ", "iii", "sde 3", "sde iii", "tech lead", "team lead"]) or any(w in text for w in ["5+ years", "6+ years", "7+ years", "senior engineer"]):
+            return {"tier": 3, "label": "Senior (5-8 Yrs)"}
+
+        # Tier 0: Intern
+        if any(w in t_lower for w in ["intern", "co-op", "internship", "trainee"]):
+            return {"tier": 0, "label": "Intern (0 Yrs)"}
+
+        # Tier 1: Early Career / Junior / Associate
+        if any(w in t_lower for w in ["junior", "entry", "associate", "graduate", "sde 1", "sde i"]) or any(w in text for w in ["0-1 year", "0-2 years", "entry level", "freshers"]):
+            return {"tier": 1, "label": "Early Career / Junior (0-2 Yrs)"}
+
+        # Tier 2: Mid-Level (default for plain Software Engineer / Developer)
+        return {"tier": 2, "label": "Mid-Level (2-5 Yrs)"}
+
+    def extract_profile_anchors(self, candidate_profile: Dict[str, Any], raw_text: str = "") -> Dict[str, Any]:
+        """Extracts top target titles, defining anchor skills, and seniority tier from candidate profile."""
         skills = []
         skills_obj = candidate_profile.get("skills", {})
         if isinstance(skills_obj, dict):
@@ -51,11 +144,13 @@ class JobSearcher:
                 break
 
         top_tech = [s for s in skills if len(s) > 1 and s.lower() not in ["agile", "scrum", "git", "bash", "communication", "sql"]]
+        seniority = self.calculate_candidate_seniority(candidate_profile, raw_text)
 
         return {
             "recommended_title": recent_title,
             "anchor_skills": top_tech[:5],
-            "all_skills": skills
+            "all_skills": skills,
+            "seniority": seniority
         }
 
     def search_matching_jobs(
@@ -65,26 +160,52 @@ class JobSearcher:
         location: str = "",
         target_board: str = "All Sources",
         anchor_skill: str = "",
+        target_seniority: str = "Auto-Match Resume",
         max_results: int = 6
     ) -> List[Dict[str, Any]]:
         """
         Searches ATS boards for individual postings matching candidate's profile.
-        Ranks each retrieved job by skill alignment with the candidate.
+        Strictly filters out jobs that have significant seniority mismatches (e.g. Staff
+        level roles for Junior/Mid-level candidates).
         """
         anchors = self.extract_profile_anchors(candidate_profile)
         search_role = role or anchors["recommended_title"]
+
+        # Resolve target seniority tier
+        cand_tier = anchors["seniority"]["tier"]
+        if "early career" in target_seniority.lower() or "junior" in target_seniority.lower():
+            filter_tier = 1
+        elif "mid-level" in target_seniority.lower():
+            filter_tier = 2
+        elif "senior" in target_seniority.lower():
+            filter_tier = 3
+        elif "staff" in target_seniority.lower() or "principal" in target_seniority.lower():
+            filter_tier = 4
+        elif "all levels" in target_seniority.lower():
+            filter_tier = -1
+        else:
+            filter_tier = cand_tier
 
         raw_jobs = self.search_individual_jobs(
             role=search_role,
             location=location,
             target_board=target_board,
             anchor_skill=anchor_skill,
-            max_results=max_results * 2
+            max_results=max_results * 3
         )
 
         scored_jobs = []
         for job in raw_jobs:
-            score_meta = self.score_job_against_profile(job, candidate_profile)
+            job_sen = self.detect_job_seniority(job.get("title", ""), job.get("snippet", ""))
+
+            # SENIORITY GUARD: If filter_tier is active, drop jobs with major experience mismatches
+            if filter_tier != -1:
+                tier_diff = job_sen["tier"] - filter_tier
+                if abs(tier_diff) >= 2:
+                    # Mismatch! E.g. Candidate is Mid-Level (2), job is Staff (4) -> diff = 2 -> DISCARD!
+                    continue
+
+            score_meta = self.score_job_against_profile(job, candidate_profile, filter_tier)
             job.update(score_meta)
             scored_jobs.append(job)
 
@@ -388,8 +509,16 @@ class JobSearcher:
 
         return cleaned.strip()
 
-    def score_job_against_profile(self, job: Dict[str, Any], candidate_profile: Dict[str, Any]) -> Dict[str, Any]:
-        """Scores a job result against the candidate's master profile."""
+    def score_job_against_profile(
+        self,
+        job: Dict[str, Any],
+        candidate_profile: Dict[str, Any],
+        target_tier: int = -1
+    ) -> Dict[str, Any]:
+        """
+        Scores a job result against the candidate's master profile, evaluating both
+        tech stack overlap and seniority alignment.
+        """
         all_skills = []
         skills_obj = candidate_profile.get("skills", {})
         if isinstance(skills_obj, dict):
@@ -408,20 +537,37 @@ class JobSearcher:
                 matched_skills.append(s_clean)
 
         title_bonus = 0
-        cand_titles = [exp.get("title", "").lower() for exp in candidate_profile.get("experience", []) if isinstance(exp, dict)]
         job_title_lower = job.get("title", "").lower()
         if any(w in job_title_lower for w in ["software", "developer", "engineer", "cloud", "platform", "backend"]):
-            title_bonus += 20
-        if any(t in job_title_lower for t in ["senior", "lead", "staff"]) and any("senior" in ct for ct in cand_titles):
             title_bonus += 15
 
-        skill_score = min(65, len(matched_skills) * 18)
-        total_score = min(98, 30 + title_bonus + skill_score)
+        # Seniority Alignment Evaluation
+        job_sen = self.detect_job_seniority(job.get("title", ""), job.get("snippet", ""))
+        seniority_bonus = 0
+        if target_tier != -1:
+            tier_diff = job_sen["tier"] - target_tier
+            if tier_diff == 0:
+                seniority_bonus = 20
+                seniority_fit = "Aligned Level"
+            elif tier_diff == 1:
+                seniority_bonus = 5
+                seniority_fit = "Stretch Level (+1)"
+            elif tier_diff == -1:
+                seniority_bonus = 10
+                seniority_fit = "Viable Level (-1)"
+            else:
+                seniority_bonus = -30
+                seniority_fit = "Experience Mismatch"
+        else:
+            seniority_fit = "General Fit"
 
-        if total_score >= 80:
+        skill_score = min(60, len(matched_skills) * 16)
+        total_score = max(20, min(98, 25 + title_bonus + seniority_bonus + skill_score))
+
+        if total_score >= 78:
             fit_tier = "High Match"
             badge_color = "green"
-        elif total_score >= 60:
+        elif total_score >= 58:
             fit_tier = "Moderate Match"
             badge_color = "blue"
         else:
@@ -432,6 +578,8 @@ class JobSearcher:
             "match_score": total_score,
             "fit_tier": fit_tier,
             "badge_color": badge_color,
+            "seniority_level": job_sen["label"],
+            "seniority_fit": seniority_fit,
             "matched_candidate_skills": matched_skills[:5]
         }
 

@@ -257,12 +257,12 @@ with tab2:
         
         searcher = JobSearcher()
         profile_obj = st.session_state.master_profile or {}
-        anchors = searcher.extract_profile_anchors(profile_obj)
+        anchors = searcher.extract_profile_anchors(profile_obj, st.session_state.master_resume_text)
 
         if profile_obj:
-            st.info(f"👤 **Detected Candidate Profile:** `{anchors['recommended_title']}` | **Core Stack:** {', '.join([f'`{s}`' for s in anchors['anchor_skills'][:4]])}")
+            st.info(f"👤 **Detected Candidate Profile:** `{anchors['recommended_title']}` | **Experience Level:** `{anchors['seniority']['label']}` (~{anchors['seniority']['years']} Yrs Exp) | **Core Stack:** {', '.join([f'`{s}`' for s in anchors['anchor_skills'][:4]])}")
 
-        col_s1, col_s2, col_s3 = st.columns([2, 1, 1.2])
+        col_s1, col_s2, col_s3, col_s4 = st.columns([2, 1.2, 1.2, 1.4])
         with col_s1:
             search_title = st.text_input("Target Role Title", value=anchors["recommended_title"])
         with col_s2:
@@ -272,6 +272,19 @@ with tab2:
                 "Target ATS Board",
                 ["All Sources", "Lever", "Workday", "Greenhouse", "Ashby", "LinkedIn (Single View)"],
                 help="Filters specifically for individual job postings rather than search result directory aggregators."
+            )
+        with col_s4:
+            search_sen = st.selectbox(
+                "Experience / Level Filter",
+                [
+                    f"Auto-Match Resume ({anchors['seniority']['label']})",
+                    "Early Career / Junior (0-2 Yrs)",
+                    "Mid-Level (2-5 Yrs)",
+                    "Senior (5-8 Yrs)",
+                    "Staff / Lead (8+ Yrs)",
+                    "All Levels (Unfiltered)"
+                ],
+                help="Strictly blocks jobs with major seniority mismatches (e.g. Staff/Lead roles for Junior/Mid-level candidates)."
             )
 
         col_anc1, col_anc2 = st.columns([2, 2])
@@ -290,19 +303,23 @@ with tab2:
                     location=search_loc,
                     target_board=search_portal,
                     anchor_skill=anchor_tech,
+                    target_seniority=search_sen,
                     max_results=6
                 )
                 st.session_state.search_results = results
 
         if "search_results" in st.session_state and st.session_state.search_results:
             st.markdown("### 🎯 Profile-Matched Opportunities:")
-            st.caption("Ranked by skill overlap with your candidate profile. All listings are pre-verified live and open.")
+            st.caption("Ranked by skill overlap and seniority compatibility with your candidate profile.")
             for i, res in enumerate(st.session_state.search_results):
                 with st.container():
                     score = res.get("match_score", 75)
                     fit_tier = res.get("fit_tier", "High Match")
+                    sen_lbl = res.get("seniority_level", "Mid-Level")
+                    sen_fit = res.get("seniority_fit", "Aligned Level")
                     live_badge = "<span style='background-color:#064e3b; color:#34d399; padding:2px 8px; border-radius:12px; font-size:12px; font-weight:600; margin-left:6px;'>🟢 Verified Live</span>"
-                    st.markdown(f"**{res['title']}** ({res.get('source', 'Job Board')}) — <span class='badge-match'>{score}% Profile Fit • {fit_tier}</span> {live_badge}", unsafe_allow_html=True)
+                    sen_badge = f"<span style='background-color:#1e3a8a; color:#93c5fd; padding:2px 8px; border-radius:12px; font-size:12px; font-weight:600; margin-left:4px;'>👔 {sen_lbl} • {sen_fit}</span>"
+                    st.markdown(f"**{res['title']}** ({res.get('source', 'Job Board')}) — <span class='badge-match'>{score}% Profile Fit • {fit_tier}</span> {live_badge} {sen_badge}", unsafe_allow_html=True)
                     st.caption(f"URL: [{res['url']}]({res['url']})")
                     st.write(res["snippet"])
 
