@@ -188,23 +188,39 @@ class ATSOptimizer:
             in_experience_or_projects = False
             for line in raw_resume_text.split("\n"):
                 sline = line.strip()
+                header_text = ""
                 if sline.startswith("## "):
-                    header_lower = sline.lower()
-                    if any(h in header_lower for h in ["experience", "project", "work history"]):
+                    header_text = sline[3:].strip()
+                elif sline.isupper() and len(sline) < 40 and any(h in sline.lower() for h in ["experience", "project", "work history", "skills", "education", "summary"]):
+                    header_text = sline
+                elif sline.lower() in ["professional experience", "work experience", "experience", "projects", "key projects", "technical skills", "skills", "education", "professional summary"]:
+                    header_text = sline
+
+                if header_text:
+                    h_lower = header_text.lower()
+                    if any(h in h_lower for h in ["experience", "project", "work history"]):
                         in_experience_or_projects = True
-                    elif any(h in header_lower for h in ["skills", "education", "certifications"]):
+                    elif any(h in h_lower for h in ["skills", "education", "certifications", "summary"]):
                         in_experience_or_projects = False
 
                 if in_experience_or_projects:
                     # Look for bullet lines, but skip bold skill category lines like "- **Languages:**"
-                    if sline.startswith(("- ", "• ", "* ", "– ")) and len(sline) > 15:
-                        content = sline.lstrip("-•*– ").strip()
-                        if not re.match(r"^\*\*[A-Za-z\s]+:\*\*", content):
-                            bullets.append(content)
+                    clean_line = sline.lstrip("-•*–\x7f \t")
+                    if sline.startswith(("- ", "• ", "* ", "– ", "•", "\x7f", "- ")) and len(clean_line) > 15:
+                        if not re.match(r"^\*\*[A-Za-z\s]+:\*\*", clean_line):
+                            bullets.append(clean_line)
 
         # Comprehensive regex for metric markers: %, $, multipliers, numbers with units, latencies, scales
         metric_pattern = re.compile(
-            r"(\b\d+(\.\d+)?%\b|\$\d+[\d,]*(\.\d+)?[kmb]?|\b\d+x\b|\b\d+\s*\+\b|\b\d+[\d,]*\s*(ms|users|clients|customers|requests|queries|downloads|events|req/s|rps|million|billion|k\b|engineers|services))",
+            r"("
+            r"\b\d+(\.\d+)?%\b|"
+            r"\$\d+[\d,]*(\.\d+)?[kmb]?\b|"
+            r"\b\d+x\b|"
+            r"\b\d+[\d,]*\s*(\+|plus)?\s*([a-zA-Z]+\s+)?(users?|clients?|customers?|requests?|queries|downloads?|events?|req/s|rps|million|billion|[kKmMbB]\b|engineers?|services?|indicators?|participants?|changes?|pods?|nodes?|records?|transactions?)|"
+            r"\b\d+[\d,]*\s*(ms|s|sec|seconds?|minutes?|hours?|days?|months?|years?)\b|"
+            r"\b\d+[\s–\-to]+\d+\b|"
+            r"\b(p50|p90|p95|p99)\b"
+            r")",
             re.I
         )
 
@@ -274,6 +290,21 @@ class ATSOptimizer:
             issues.append("Dates should follow 'Month YYYY – Month YYYY' format.")
         else:
             checks_passed.append("Standard chronological date patterns detected.")
+
+        # 4. Text Stream & Cleanliness Check (corrupt control characters or raw markdown link leaks)
+        bad_chars = re.findall(r"[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]", raw_resume_text)
+        if bad_chars:
+            deductions += 15
+            issues.append(f"Detected {len(bad_chars)} unprintable/corrupt control characters (e.g. \\x7f) that degrade ATS score.")
+        else:
+            checks_passed.append("Text stream is 100% clean (zero unprintable control characters).")
+
+        # Check for unrendered markdown link syntax in contact information
+        if re.search(r"\[(Phone|Email|Location|LinkedIn|GitHub)[^\]]*\]\(", raw_resume_text):
+            deductions += 10
+            issues.append("Unparsed markdown link brackets detected in contact info.")
+        else:
+            checks_passed.append("Contact information format is clean and free of markdown syntax.")
 
         safety_score = max(20, 100 - deductions)
 

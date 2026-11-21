@@ -19,13 +19,25 @@ Your goal is to tailor the candidate's Master Resume for a specific target job p
 CRITICAL ATS & RECRUITER RULES:
 1. STRICT TRUTH-PRESERVING: NEVER fabricate non-existent jobs, degrees, or imaginary companies. Work strictly from the candidate's actual background, highlighting, reframing, and prioritizing authentic accomplishments.
 2. SINGLE-COLUMN ATS HIERARCHY: Structure strictly in clean Markdown using standard headers:
-   # [Full Name]
-   [Contact Line: Phone | Email | Location | LinkedIn | Portfolio]
+   # Full Name
+   Phone | Email | Location | LinkedIn URL | GitHub URL
+   (Do NOT wrap contact items in markdown links like [Phone: ...](tel:...) - keep as clean text separated by pipes)
    ## Professional Summary
    ## Core Technical Skills
+   (Format skills as dense category rows, NEVER vertical single-item bullet lists:
+   - **Languages:** Python, C#, JavaScript, SQL
+   - **Cloud & DevOps:** Azure, Docker, Kubernetes, CI/CD
+   - **Frameworks & Libraries:** Node.js, .NET Core, FastAPI, Kafka
+   - **Databases & Caching:** PostgreSQL, Redis, MongoDB)
    ## Professional Experience
+   ### Role Title | Company Name (Month YYYY – Month YYYY, Location)
+   - Accomplishment bullet 1...
+   - Accomplishment bullet 2...
    ## Key Projects
-   ## Education & Certifications
+   ### Project Name | Tech Stack (Link)
+   - Accomplishment bullet...
+   ## Education
+   ### Degree in Field | University Name (Graduation Year, CGPA/Honors)
 3. THREE-LAYER KEYWORD INTEGRATION:
    - Layer 1 (Summary): Embed target job title and top 3 must-have tech skills + years of experience.
    - Layer 2 (Skills): Organize into clear categories (Languages, Frameworks, Cloud, Databases, Tools) matching employer terminology.
@@ -184,23 +196,33 @@ Return ONLY valid JSON.
             }
 
     def _clean_markdown(self, text: str) -> str:
-        """Extracts strictly markdown content, removing preambles and code fences."""
+        """Extracts strictly markdown content, removing preambles, code fences, and normalizing ATS formatting."""
         text = text.strip()
         # Look for code block fences
         match = re.search(r"```(?:markdown|md)?\s*\n(.*?)\n```", text, re.DOTALL)
         if match:
-            return match.group(1).strip()
+            clean = match.group(1).strip()
+        else:
+            # If it starts with a fence without closing or partial
+            if text.startswith("```markdown"):
+                text = text[11:]
+            elif text.startswith("```md"):
+                text = text[5:]
+            elif text.startswith("```"):
+                text = text[3:]
+            if text.endswith("```"):
+                text = text[:-3]
+            clean = text.strip()
 
-        # If it starts with a fence without closing or partial
-        if text.startswith("```markdown"):
-            text = text[11:]
-        elif text.startswith("```md"):
-            text = text[5:]
-        elif text.startswith("```"):
-            text = text[3:]
-        if text.endswith("```"):
-            text = text[:-3]
-        return text.strip()
+        # Enforce ATS gold standard: consolidate vertical skills and clean contact line
+        try:
+            from modules.document_exporter import DocumentExporter
+            exporter = DocumentExporter()
+            clean = exporter.normalize_markdown(clean)
+        except Exception:
+            pass
+
+        return clean
 
     def _fallback_tailored_resume(
         self,

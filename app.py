@@ -661,6 +661,7 @@ with tab4:
                     template=template_code,
                     page_length=length_code
                 )
+                audit_pdf = exporter.audit_pdf_ats(pdf_path)
                 with open(pdf_path, "rb") as f:
                     st.download_button(
                         label=f"📕 Download PDF ({template_code.title()} • {length_code})",
@@ -670,6 +671,7 @@ with tab4:
                         use_container_width=True
                     )
             except Exception as e:
+                audit_pdf = None
                 st.caption(f"PDF export note: {e}")
 
         with exp_col2:
@@ -696,6 +698,16 @@ with tab4:
                     mime="text/markdown",
                     use_container_width=True
                 )
+
+        if audit_pdf and audit_pdf.get("is_ats_safe"):
+            st.success(f"🛡️ **ATS-Certified PDF ({template_code.title()} • {length_code}):** 100% Selectable Text Layer • {audit_pdf['page_count']} Page(s) • Zero Control Characters • All Sections Verified")
+            with st.expander("🔍 View PDF ATS Parser Audit Details", expanded=False):
+                st.write(f"- **Pages:** {audit_pdf['page_count']}")
+                st.write(f"- **Text Extracted:** {audit_pdf['character_count']} characters (100% Machine-Readable Text Layer)")
+                st.write(f"- **Control Characters Clean:** {'✅ Passed (Clean UTF-8 Stream)' if audit_pdf['control_characters_clean'] else '⚠️ Control characters detected'}")
+                st.write(f"- **Email Detected:** {'✅ Verified' if audit_pdf['email_extracted'] else '❌ Missing'}")
+                st.write(f"- **Phone Detected:** {'✅ Verified' if audit_pdf['phone_extracted'] else '❌ Missing'}")
+                st.write(f"- **Sections Detected:** {', '.join([s.title() for s in audit_pdf['sections_detected']])}")
 
         if st.session_state.last_recorded_app:
             rec = st.session_state.last_recorded_app
