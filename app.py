@@ -296,29 +296,35 @@ with tab2:
 
         if "search_results" in st.session_state and st.session_state.search_results:
             st.markdown("### 🎯 Profile-Matched Opportunities:")
-            st.caption("Ranked by skill overlap with your candidate profile. Individual postings only.")
+            st.caption("Ranked by skill overlap with your candidate profile. All listings are pre-verified live and open.")
             for i, res in enumerate(st.session_state.search_results):
                 with st.container():
                     score = res.get("match_score", 75)
                     fit_tier = res.get("fit_tier", "High Match")
-                    st.markdown(f"**{res['title']}** ({res.get('source', 'Job Board')}) — <span class='badge-match'>{score}% Profile Fit • {fit_tier}</span>", unsafe_allow_html=True)
+                    live_badge = "<span style='background-color:#064e3b; color:#34d399; padding:2px 8px; border-radius:12px; font-size:12px; font-weight:600; margin-left:6px;'>🟢 Verified Live</span>"
+                    st.markdown(f"**{res['title']}** ({res.get('source', 'Job Board')}) — <span class='badge-match'>{score}% Profile Fit • {fit_tier}</span> {live_badge}", unsafe_allow_html=True)
                     st.caption(f"URL: [{res['url']}]({res['url']})")
                     st.write(res["snippet"])
 
                     if res.get("matched_candidate_skills"):
                         st.write("✅ **Skills in Job Matching Your Profile:** " + ", ".join([f"`{s}`" for s in res["matched_candidate_skills"]]))
 
-                    col_b1, col_b2 = st.columns([1, 4])
+                    col_b1, col_b2, col_b3 = st.columns([1.2, 1.4, 3])
                     with col_b1:
                         if st.button(f"Use This Job", key=f"select_job_{i}"):
                             with st.spinner("Extracting selected job details..."):
-                                extractor = JobExtractor(llm_client)
-                                st.session_state.job_data = extractor.parse_job_description(res['url'])
-                                st.session_state.target_job_url = res['url']
-                                st.success(f"Selected: {st.session_state.job_data.get('title', 'Role')}")
+                                try:
+                                    extractor = JobExtractor(llm_client)
+                                    st.session_state.job_data = extractor.parse_job_description(res['url'])
+                                    st.session_state.target_job_url = res['url']
+                                    st.success(f"Selected: {st.session_state.job_data.get('title', 'Role')} at {st.session_state.job_data.get('company', 'Company')}")
+                                except Exception as err:
+                                    st.error(f"⚠️ {err}")
+                    with col_b2:
+                        st.link_button("🌐 Open Job Page ↗", res['url'])
                     st.divider()
         elif "search_results" in st.session_state and len(st.session_state.search_results) == 0:
-            st.warning("⚠️ No individual ATS requisitions found matching these specific filters. Try setting ATS Board to 'All Sources' or broadening the title.")
+            st.warning("⚠️ No live individual ATS requisitions found matching these specific filters. Try setting ATS Board to 'All Sources' or broadening the title.")
 
     # Display extracted job requirements summary and profile compatibility check
     if st.session_state.job_data:

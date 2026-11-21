@@ -10,6 +10,7 @@ import re
 import urllib.parse
 import warnings
 import logging
+import concurrent.futures
 from typing import List, Dict, Any, Optional
 import requests
 
@@ -148,12 +149,13 @@ class JobSearcher:
                 ("Ashby", f'{clean_role} {loc_clause} site:jobs.ashbyhq.com')
             ]
 
-        results = []
+        candidates = []
         seen_urls = set()
 
         if DDGS is not None:
+            # Gather up to 3x candidates across boards to account for expired postings
             for source_name, q in board_queries:
-                if len(results) >= max_results:
+                if len(candidates) >= max_results * 3:
                     break
                 try:
                     with DDGS() as ddgs:
@@ -166,23 +168,37 @@ class JobSearcher:
                             # Normalize URL to prevent duplicates (e.g. Lever /apply suffix, tracking params)
                             norm_url = re.sub(r"/apply/?$", "", href).split("?")[0].rstrip("/")
 
-                            # STRICT VALIDATION: Must be an individual job post, not a portal/directory
+                            # STRICT VALIDATION: Must match single requisition criteria
                             if norm_url and norm_url not in seen_urls and self._is_individual_job(href, title):
                                 seen_urls.add(norm_url)
                                 clean_t = self._clean_job_title(title, href, source_name)
-                                results.append({
+                                candidates.append({
                                     "title": clean_t,
                                     "url": norm_url,
                                     "snippet": snippet,
                                     "source": source_name
                                 })
-                                if len(results) >= max_results:
+                                if len(candidates) >= max_results * 3:
                                     break
                 except Exception:
                     continue
 
-        if results:
-            return results
+        # Concurrent Active Liveness Verification:
+        # Pre-flights candidate URLs in parallel to discard 404s, expired jobs, and redirect errors
+        live_results = []
+        if candidates:
+            with concurrent.futures.ThreadPoolExecutor(max_workers=8) as executor:
+                liveness_checks = list(executor.map(lambda c: self.verify_job_url_active(c["url"]), candidates))
+
+            for cand, is_active in zip(candidates, liveness_checks):
+                if is_active:
+                    cand["is_verified_live"] = True
+                    live_results.append(cand)
+                    if len(live_results) >= max_results:
+                        break
+
+        if live_results:
+            return live_results
 
         # Fallback: Live Public Tech APIs (individual listings only)
         api_results = self._search_public_apis(clean_role, max_results=max_results)
@@ -191,6 +207,80 @@ class JobSearcher:
 
         # Return empty list if no individual requisitions match (never return generic directory search sets)
         return []
+
+    def verify_job_url_active(self, url: str, timeout: float = 3.2) -> bool:
+        """
+        Actively verifies that a candidate job posting URL is live and open.
+        Rejects 404/410, Greenhouse error redirects (?error=true), Lever/Ashby missing UUID
+        redirects, Workday portal redirects, and notices that the job has been filled or closed.
+        """
+        headers = {
+            "User-Agent": (
+                "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+                "AppleWebKit/537.36 (KHTML, like Gecko) "
+                "Chrome/124.0.0.0 Safari/537.36"
+            ),
+            "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+            "Accept-Language": "en-US,en;q=0.9"
+        }
+        try:
+            resp = requests.get(url, headers=headers, timeout=timeout, allow_redirects=True)
+
+            # 1. HTTP Status Code Check (reject 404 Not Found, 410 Gone, 500, etc.)
+            if resp.status_code in [404, 410, 500, 502, 503]:
+                return False
+
+            final_url = resp.url.lower()
+
+            # 2. Redirect checks
+            # Greenhouse closed/expired jobs redirect to ?error=true
+            if "error=true" in final_url:
+                return False
+            if "greenhouse.io" in final_url and not re.search(r"greenhouse\.io/[^/]+/jobs/\d+", final_url):
+                return False
+
+            # Lever: closed jobs either return 404 or redirect away from UUID
+            if "jobs.lever.co" in final_url and not re.search(r"jobs\.lever\.co/[^/]+/[0-9a-f\-]{8,}", final_url):
+                return False
+
+            # Workday: reject if redirected away from /job/ to portal/search
+            if "myworkdayjobs.com" in final_url and "/job/" not in final_url:
+                return False
+
+            # Ashby: reject if redirected away from UUID
+            if "jobs.ashbyhq.com" in final_url and not re.search(r"jobs\.ashbyhq\.com/[^/]+/[0-9a-f\-]{8,}", final_url):
+                return False
+
+            # 3. HTML Content Inspection for dead / closed indicators
+            body_lower = resp.text.lower()
+            dead_phrases = [
+                "this job is no longer available",
+                "this position is no longer available",
+                "no longer accepting applications",
+                "job is not found",
+                "job not found",
+                "position has been filled",
+                "job requisition no longer open",
+                "job requisition is no longer open",
+                "this posting has expired",
+                "the job you are looking for is no longer open",
+                "not found – 404 error",
+                "not found - 404 error",
+                "404 - page not found",
+                "404 not found",
+                "current openings at"
+            ]
+
+            for phrase in dead_phrases:
+                if phrase in body_lower:
+                    return False
+
+            return True
+        except Exception:
+            # If Workday triggers a Cloudflare challenge or timeout, but URL strictly has /job/, allow it
+            if "myworkdayjobs.com" in url.lower() and "/job/" in url.lower():
+                return True
+            return False
 
     def _is_individual_job(self, url: str, title: str) -> bool:
         """

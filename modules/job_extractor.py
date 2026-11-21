@@ -43,9 +43,33 @@ class JobExtractor:
         }
 
         try:
-            resp = requests.get(url, headers=headers, timeout=15)
+            resp = requests.get(url, headers=headers, timeout=15, allow_redirects=True)
+            if resp.status_code == 404:
+                raise RuntimeError(f"Job not found (404) at {url}. This posting has been closed or removed by the employer.")
             resp.raise_for_status()
             html = resp.text
+
+            # Check for ATS closed/expired redirects and notices
+            final_url = resp.url.lower()
+            if "error=true" in final_url:
+                raise RuntimeError(f"Job posting at {url} has expired or is no longer accepting applications.")
+
+            body_lower = html.lower()
+            dead_signals = [
+                "this job is no longer available",
+                "this position is no longer available",
+                "no longer accepting applications",
+                "job is not found",
+                "job not found",
+                "the job you are looking for is no longer open",
+                "not found – 404 error",
+                "not found - 404 error"
+            ]
+            for sig in dead_signals:
+                if sig in body_lower:
+                    raise RuntimeError(f"Job posting is closed: employer notice states '{sig}'.")
+        except RuntimeError:
+            raise
         except Exception as e:
             raise RuntimeError(f"Failed to fetch job link ({url}): {e}")
 
