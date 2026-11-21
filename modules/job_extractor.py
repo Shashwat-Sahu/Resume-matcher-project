@@ -84,13 +84,36 @@ class JobExtractor:
                         for sig in dead_signals:
                             if sig in api_text_lower:
                                 raise RuntimeError(f"LinkedIn posting at {url} is not currently accepting applications.")
-                        # Try to parse clean description directly from Guest API
+                        
+                        # Verify the posting actively has an Apply CTA button
                         try:
                             from bs4 import BeautifulSoup
                             soup = BeautifulSoup(api_resp.text, "html.parser")
+                            apply_cta = soup.find(lambda tag: tag.name in ["button", "a"] and (
+                                "top-card-layout__cta--primary" in tag.get("class", []) or
+                                "apply-button" in tag.get("class", []) or
+                                "apply-button--default" in tag.get("class", []) or
+                                tag.get("data-tracking-control-name") in [
+                                    "public_jobs_apply-link",
+                                    "public_jobs_topcard-apply-button",
+                                    "public_jobs_apply-button-link",
+                                    "apply",
+                                    "easy-apply"
+                                ] or
+                                (any(w in tag.get_text(strip=True).lower() for w in ["apply", "easy apply", "apply now", "apply on company website"])
+                                 and not tag.get("disabled")
+                                 and "alert" not in tag.get_text(strip=True).lower()
+                                 and "similar" not in tag.get_text(strip=True).lower()
+                                 and "search" not in tag.get_text(strip=True).lower())
+                            ))
+                            if not apply_cta:
+                                raise RuntimeError(f"LinkedIn posting at {url} is closed: employer is not currently accepting applications.")
+
                             desc_elem = soup.find(class_=re.compile(r"description__text|show-more-less-html__markup|decoratedJobPosting"))
                             if desc_elem and len(desc_elem.get_text(strip=True)) > 150:
                                 return self._clean_text(desc_elem.get_text(separator="\n"))
+                        except RuntimeError:
+                            raise
                         except Exception:
                             pass
                 except RuntimeError:

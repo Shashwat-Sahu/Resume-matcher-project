@@ -359,13 +359,14 @@ class JobSearcher:
         # Return empty list if no individual requisitions match (never return generic directory search sets)
         return []
 
-    def _verify_linkedin_active(self, url: str, headers: Dict[str, str], timeout: float = 3.5) -> bool:
+    def _verify_linkedin_active(self, url: str, headers: Dict[str, str], timeout: float = 4.0) -> bool:
         """
         Specialized active verifier for LinkedIn postings.
         Checks both LinkedIn Guest API and direct page HTML.
-        Strictly rejects postings that state 'Not currently accepting applications',
-        'No longer accepting applications', 'Applications are closed', or have closed status tags.
-        Guarantees that unverified, rate-limited, or closed LinkedIn jobs are never marked active.
+        Strictly requires the presence of an active Apply CTA button/link.
+        When a posting is 'Not currently accepting applications' or closed, LinkedIn removes
+        the Apply button from the DOM (empty CTA container).
+        Also rejects postings containing closed/expired notices.
         """
         job_id_match = re.search(r"(\d{6,})", url)
         if not job_id_match:
@@ -395,7 +396,32 @@ class JobSearcher:
             "this job posting has expired"
         ]
 
-        html_candidates = []
+        def _has_apply_button(html_text: str) -> bool:
+            if not html_text or len(html_text) < 300:
+                return False
+            try:
+                from bs4 import BeautifulSoup
+                soup = BeautifulSoup(html_text, "html.parser")
+                apply_cta = soup.find(lambda tag: tag.name in ["button", "a"] and (
+                    "top-card-layout__cta--primary" in tag.get("class", []) or
+                    "apply-button" in tag.get("class", []) or
+                    "apply-button--default" in tag.get("class", []) or
+                    tag.get("data-tracking-control-name") in [
+                        "public_jobs_apply-link",
+                        "public_jobs_topcard-apply-button",
+                        "public_jobs_apply-button-link",
+                        "apply",
+                        "easy-apply"
+                    ] or
+                    (any(w in tag.get_text(strip=True).lower() for w in ["apply", "easy apply", "apply now", "apply on company website"])
+                     and not tag.get("disabled")
+                     and "alert" not in tag.get_text(strip=True).lower()
+                     and "similar" not in tag.get_text(strip=True).lower()
+                     and "search" not in tag.get_text(strip=True).lower())
+                ))
+                return apply_cta is not None
+            except Exception:
+                return False
 
         # 1. Try Guest API (bypasses authwall and returns structured HTML)
         api_url = f"https://www.linkedin.com/jobs-guest/jobs/api/jobPosting/{jid}"
@@ -403,33 +429,36 @@ class JobSearcher:
             api_resp = requests.get(api_url, headers=headers, timeout=timeout)
             if api_resp.status_code in [404, 410]:
                 return False
-            if api_resp.status_code == 200 and len(api_resp.text) > 300:
-                html_candidates.append(api_resp.text.lower())
+            if api_resp.status_code == 200:
+                text_lower = api_resp.text.lower()
+                for sig in dead_signals:
+                    if sig in text_lower:
+                        return False
+                # Must affirmatively possess an active Apply button
+                if not _has_apply_button(api_resp.text):
+                    return False
+                return True
         except Exception:
             pass
 
-        # 2. Try direct job view URL
+        # 2. Try direct job view URL as fallback
         try:
             resp = requests.get(url, headers=headers, timeout=timeout, allow_redirects=True)
             if resp.status_code in [404, 410]:
                 return False
-            if resp.status_code == 200 and len(resp.text) > 300:
-                html_candidates.append(resp.text.lower())
+            if resp.status_code == 200:
+                text_lower = resp.text.lower()
+                for sig in dead_signals:
+                    if sig in text_lower:
+                        return False
+                if not _has_apply_button(resp.text):
+                    return False
+                return True
         except Exception:
             pass
 
-        # If neither endpoint could be retrieved (e.g. rate limited 429, challenge, or connection timeout),
-        # NEVER return True! Require affirmative confirmation that the job is live and accepting applications.
-        if not html_candidates:
-            return False
-
-        # If ANY retrieved content contains dead signals, reject the posting
-        for html_text in html_candidates:
-            for sig in dead_signals:
-                if sig in html_text:
-                    return False
-
-        return True
+        # If neither endpoint could affirmatively confirm an active Apply button, REJECT!
+        return False
 
     def verify_job_url_active(self, url: str, timeout: float = 3.5) -> bool:
         """
