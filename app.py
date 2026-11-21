@@ -262,7 +262,7 @@ with tab2:
         if profile_obj:
             st.info(f"👤 **Detected Candidate Profile:** `{anchors['recommended_title']}` | **Experience Level:** `{anchors['seniority']['label']}` (~{anchors['seniority']['years']} Yrs Exp) | **Core Stack:** {', '.join([f'`{s}`' for s in anchors['anchor_skills'][:4]])}")
 
-        col_s1, col_s2, col_s3, col_s4 = st.columns([2, 1.2, 1.2, 1.4])
+        col_s1, col_s2, col_s3, col_s4, col_s5 = st.columns([1.8, 1.1, 1.2, 1.4, 0.9])
         with col_s1:
             search_title = st.text_input("Target Role Title", value=anchors["recommended_title"])
         with col_s2:
@@ -270,7 +270,7 @@ with tab2:
         with col_s3:
             search_portal = st.selectbox(
                 "Target ATS Board",
-                ["All Sources", "Lever", "Workday", "Greenhouse", "Ashby", "LinkedIn (Single View)"],
+                ["All Sources", "LinkedIn (Single View)", "Workday", "Lever", "Greenhouse", "SmartRecruiters", "Ashby"],
                 help="Filters specifically for individual job postings rather than search result directory aggregators."
             )
         with col_s4:
@@ -286,13 +286,21 @@ with tab2:
                 ],
                 help="Strictly blocks jobs with major seniority mismatches (e.g. Staff/Lead roles for Junior/Mid-level candidates)."
             )
+        with col_s5:
+            search_count = st.selectbox(
+                "Show Count",
+                [6, 10, 15, 20],
+                index=1,
+                help="Maximum number of profile-matched openings to return."
+            )
 
         col_anc1, col_anc2 = st.columns([2, 2])
         with col_anc1:
             anchor_tech = st.text_input(
                 "Anchor Technology Filter (Optional)",
-                value=anchors["anchor_skills"][0] if anchors["anchor_skills"] else "",
-                help="Ensures fetched jobs contain this specific core skill from your profile (e.g. Python, AWS, Go)."
+                value="",
+                placeholder="Leave blank for all tech, or specify: Python, AWS, Go...",
+                help="Optional. Leave blank to match your full stack, or enter a specific tool to narrow results."
             )
 
         if st.button("Search Profile-Matched Openings", type="primary"):
@@ -304,7 +312,7 @@ with tab2:
                     target_board=search_portal,
                     anchor_skill=anchor_tech,
                     target_seniority=search_sen,
-                    max_results=6
+                    max_results=search_count
                 )
                 st.session_state.search_results = results
 

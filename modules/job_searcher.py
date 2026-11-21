@@ -202,7 +202,7 @@ class JobSearcher:
             location=location,
             target_board=target_board,
             anchor_skill=anchor_skill,
-            max_results=max_results * 3
+            max_results=max_results * 4
         )
 
         scored_jobs = []
@@ -227,11 +227,14 @@ class JobSearcher:
             ):
                 continue
 
-            # 3. SENIORITY GUARD: If filter_tier is active, drop jobs with major experience mismatches
-            if filter_tier != -1:
-                tier_diff = job_sen["tier"] - filter_tier
-                if abs(tier_diff) >= 2:
-                    continue
+            # 3. SENIORITY GUARD:
+            # Junior candidates (Tier 1) should not be suggested Senior (Tier 3) or Staff (Tier 4)
+            if filter_tier == 1 and job_sen["tier"] >= 3:
+                continue
+
+            # SDE 2 / Mid-level candidates (Tier 2) should not be suggested Staff (Tier 4) or Intern (Tier 0)
+            if filter_tier == 2 and (job_sen["tier"] >= 4 or job_sen["tier"] == 0):
+                continue
 
             score_meta = self.score_job_against_profile(job, candidate_profile, filter_tier)
             job.update(score_meta)
@@ -246,106 +249,121 @@ class JobSearcher:
         location: str = "",
         target_board: str = "All Sources",
         anchor_skill: str = "",
-        max_results: int = 6
+        max_results: int = 10
     ) -> List[Dict[str, str]]:
         """
-        Queries specific ATS boards (Workday, Lever, Greenhouse, Ashby) using exact
-        requisition-targeting queries to return individual postings only.
+        Queries specific ATS boards (Workday, Lever, Greenhouse, Ashby, SmartRecruiters, LinkedIn)
+        using exact requisition-targeting queries to return individual postings only.
         """
         clean_role = re.sub(r"[^\w\s\+\#]", " ", role).strip()
         loc_clause = f'"{location.strip()}"' if location.strip() else ""
         skill_clause = f'"{anchor_skill.strip()}"' if anchor_skill.strip() else ""
 
         # Formulate precise queries that force search engines to return specific job requisitions
-        # For Workday: require 'Job Description' to bypass company portal landing pages
-        # For Greenhouse: require '/jobs/' in query
         board_queries = []
 
         if target_board == "Lever":
             board_queries = [
-                ("Lever", f'"{clean_role}" {skill_clause} {loc_clause} site:jobs.lever.co'),
-                ("Lever", f'{clean_role} {loc_clause} site:jobs.lever.co')
+                ("Lever", f'{clean_role} {loc_clause} site:jobs.lever.co'),
+                ("Lever", f'"{clean_role}" {loc_clause} site:jobs.lever.co'),
+                ("Lever", f'{clean_role} {skill_clause} site:jobs.lever.co' if skill_clause else f'{clean_role} site:jobs.lever.co')
             ]
         elif target_board == "Workday":
             board_queries = [
-                ("Workday", f'"{clean_role}" {skill_clause} {loc_clause} "Job Description" site:myworkdayjobs.com'),
-                ("Workday", f'{clean_role} {loc_clause} "Job Description" site:myworkdayjobs.com')
+                ("Workday", f'{clean_role} {loc_clause} "Job Description" site:myworkdayjobs.com'),
+                ("Workday", f'{clean_role} {loc_clause} site:myworkdayjobs.com "/job/"'),
+                ("Workday", f'"{clean_role}" {loc_clause} "Job Description" site:myworkdayjobs.com')
             ]
         elif target_board == "Greenhouse":
             board_queries = [
-                ("Greenhouse", f'"{clean_role}" {skill_clause} {loc_clause} site:boards.greenhouse.io'),
                 ("Greenhouse", f'{clean_role} {loc_clause} site:boards.greenhouse.io'),
+                ("Greenhouse", f'"{clean_role}" {loc_clause} site:boards.greenhouse.io'),
                 ("Greenhouse", f'{clean_role} {loc_clause} site:job-boards.greenhouse.io')
             ]
+        elif target_board == "SmartRecruiters":
+            board_queries = [
+                ("SmartRecruiters", f'{clean_role} {loc_clause} site:jobs.smartrecruiters.com'),
+                ("SmartRecruiters", f'"{clean_role}" {loc_clause} site:jobs.smartrecruiters.com')
+            ]
         elif target_board == "Ashby":
-            board_queries = [("Ashby", f'"{clean_role}" {loc_clause} site:jobs.ashbyhq.com')]
+            board_queries = [
+                ("Ashby", f'{clean_role} {loc_clause} site:jobs.ashbyhq.com'),
+                ("Ashby", f'"{clean_role}" {loc_clause} site:jobs.ashbyhq.com')
+            ]
         elif target_board == "LinkedIn (Single View)":
             board_queries = [
-                ("LinkedIn", f'"{clean_role}" {loc_clause} site:linkedin.com/jobs/view -"no longer accepting" -"not currently accepting" -"closed"'),
-                ("LinkedIn", f'{clean_role} {loc_clause} site:linkedin.com/jobs/view -"no longer accepting" -"not currently accepting" -"closed"'),
-                ("LinkedIn", f'{clean_role} {loc_clause} site:in.linkedin.com/jobs/view -"no longer accepting" -"not currently accepting" -"closed"'),
-                ("LinkedIn", f'"{clean_role}" {skill_clause} site:linkedin.com/jobs/view -"no longer accepting" -"not currently accepting"')
+                ("LinkedIn", f'{clean_role} {loc_clause} site:linkedin.com/jobs/view'),
+                ("LinkedIn", f'"{clean_role}" {loc_clause} site:linkedin.com/jobs/view'),
+                ("LinkedIn", f'{clean_role} {loc_clause} site:in.linkedin.com/jobs/view'),
+                ("LinkedIn", f'{clean_role} {loc_clause} site:linkedin.com "/jobs/view"'),
+                ("LinkedIn", f'{clean_role} II {loc_clause} site:linkedin.com/jobs/view'),
+                ("LinkedIn", f'SDE {loc_clause} site:linkedin.com/jobs/view')
             ]
         else:
             # All Sources: query each ATS host with individual requisition constraints
             board_queries = [
-                ("Workday", f'"{clean_role}" {skill_clause} {loc_clause} "Job Description" site:myworkdayjobs.com'),
-                ("Lever", f'"{clean_role}" {skill_clause} {loc_clause} site:jobs.lever.co'),
-                ("LinkedIn", f'"{clean_role}" {loc_clause} site:linkedin.com/jobs/view -"no longer accepting" -"not currently accepting"'),
-                ("Greenhouse", f'"{clean_role}" {skill_clause} {loc_clause} site:boards.greenhouse.io'),
                 ("Workday", f'{clean_role} {loc_clause} "Job Description" site:myworkdayjobs.com'),
+                ("LinkedIn", f'{clean_role} {loc_clause} site:linkedin.com/jobs/view'),
                 ("Lever", f'{clean_role} {loc_clause} site:jobs.lever.co'),
-                ("LinkedIn", f'{clean_role} {loc_clause} site:in.linkedin.com/jobs/view -"no longer accepting" -"not currently accepting"'),
                 ("Greenhouse", f'{clean_role} {loc_clause} site:boards.greenhouse.io'),
+                ("SmartRecruiters", f'{clean_role} {loc_clause} site:jobs.smartrecruiters.com'),
+                ("LinkedIn", f'{clean_role} {loc_clause} site:in.linkedin.com/jobs/view'),
+                ("Workday", f'{clean_role} {loc_clause} site:myworkdayjobs.com "/job/"'),
+                ("Lever", f'"{clean_role}" {loc_clause} site:jobs.lever.co'),
+                ("Greenhouse", f'"{clean_role}" {loc_clause} site:boards.greenhouse.io'),
                 ("Ashby", f'{clean_role} {loc_clause} site:jobs.ashbyhq.com')
             ]
 
         candidates = []
         seen_urls = set()
+        target_candidates_count = max(24, max_results * 4)
 
         if DDGS is not None:
-            # Gather up to 3x candidates across boards to account for expired postings
             for source_name, q in board_queries:
-                if len(candidates) >= max_results * 3:
+                if len(candidates) >= target_candidates_count:
                     break
-                try:
-                    with DDGS() as ddgs:
-                        raw = list(ddgs.text(q.strip(), max_results=5))
-                        for r in raw:
-                            href = r.get("href") or r.get("url") or ""
-                            title = r.get("title", "")
-                            snippet = r.get("body") or r.get("snippet") or ""
+                # Try primary backend, with automatic fallback to Yahoo if rate-limited
+                for backend_choice in ["auto", "yahoo"]:
+                    try:
+                        with DDGS(timeout=3.5) as ddgs:
+                            raw = list(ddgs.text(q.strip(), max_results=12, backend=backend_choice))
+                            for r in raw:
+                                href = r.get("href") or r.get("url") or ""
+                                title = r.get("title", "")
+                                snippet = r.get("body") or r.get("snippet") or ""
 
-                            # Normalize URL to prevent duplicates (e.g. Lever /apply suffix, tracking params)
-                            norm_url = re.sub(r"/apply/?$", "", href).split("?")[0].rstrip("/")
+                                # Normalize URL to prevent duplicates (e.g. Lever /apply suffix, tracking params)
+                                norm_url = re.sub(r"/apply/?$", "", href).split("?")[0].rstrip("/")
 
-                            # STRICT VALIDATION: Must match single requisition criteria
-                            if norm_url and norm_url not in seen_urls and self._is_individual_job(href, title, snippet):
-                                seen_urls.add(norm_url)
-                                clean_t = self._clean_job_title(title, href, source_name)
-                                candidates.append({
-                                    "title": clean_t,
-                                    "url": norm_url,
-                                    "snippet": snippet,
-                                    "source": source_name
-                                })
-                                if len(candidates) >= max_results * 3:
-                                    break
-                except Exception:
-                    continue
+                                # STRICT VALIDATION: Must match single requisition criteria
+                                if norm_url and norm_url not in seen_urls and self._is_individual_job(href, title, snippet):
+                                    seen_urls.add(norm_url)
+                                    clean_t = self._clean_job_title(title, href, source_name)
+                                    candidates.append({
+                                        "title": clean_t,
+                                        "url": norm_url,
+                                        "snippet": snippet,
+                                        "source": source_name
+                                    })
+                                    if len(candidates) >= target_candidates_count:
+                                        break
+                        if raw:
+                            break
+                    except Exception:
+                        continue
 
         # Concurrent Active Liveness Verification:
         # Pre-flights candidate URLs in parallel to discard 404s, expired jobs, and redirect errors
         live_results = []
         if candidates:
-            with concurrent.futures.ThreadPoolExecutor(max_workers=8) as executor:
+            with concurrent.futures.ThreadPoolExecutor(max_workers=10) as executor:
                 liveness_checks = list(executor.map(lambda c: self.verify_job_url_active(c["url"]), candidates))
 
             for cand, is_active in zip(candidates, liveness_checks):
                 if is_active:
                     cand["is_verified_live"] = True
                     live_results.append(cand)
-                    if len(live_results) >= max_results:
+                    if len(live_results) >= max_results * 2:
                         break
 
         if live_results:
@@ -650,6 +668,12 @@ class JobSearcher:
                 return False
             return True
 
+        # SmartRecruiters: MUST have company and job requisition path
+        if "smartrecruiters.com" in url_lower:
+            if re.search(r"jobs\.smartrecruiters\.com/[^/]+/[^/?]+", url_lower):
+                return True
+            return False
+
         # Generic Career sites: must have specific job path segment
         if re.search(r"/(job|jobs|requisition|position)/\d+", url_lower):
             return True
@@ -664,6 +688,7 @@ class JobSearcher:
         cleaned = re.sub(r"\s*-\s*Careers\s*at\s*.*$", "", cleaned, flags=re.I)
         cleaned = re.sub(r"\s*-\s*myworkdayjobs\.com.*$", "", cleaned, flags=re.I)
         cleaned = re.sub(r"\s*-\s*job-boards\..*$", "", cleaned, flags=re.I)
+        cleaned = re.sub(r"\s*-\s*SmartRecruiters.*$", "", cleaned, flags=re.I)
         cleaned = re.sub(r"\s*-\s*Logo$", "", cleaned, flags=re.I)
 
         # If title is generic or company subdomain is known, prepend company
