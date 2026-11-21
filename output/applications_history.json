@@ -1,5 +1,43 @@
 [
   {
+    "id": "20261121_153658_Microsoft_Software_Engineer_II",
+    "created_at": "2026-11-21 15:36:58",
+    "candidate_name": "Shashwat Sahu",
+    "job_title": "Software Engineer II",
+    "company": "Microsoft",
+    "job_url": "https://in.linkedin.com/jobs/view/software-engineer-ii-at-microsoft-4477669850",
+    "original_ats_score": 53,
+    "tailored_ats_score": 62,
+    "ats_score_delta": 9,
+    "breakdown": {
+      "keyword_match_score": 29,
+      "quantification_impact_score": 89,
+      "formatting_safety_score": 100
+    },
+    "top_skills": [
+      "C#",
+      "Java",
+      "Scala",
+      "Python",
+      "Apache Spark",
+      "Kafka"
+    ],
+    "newly_matched_keywords": [
+      "Azure Data",
+      "Azure Data Factory",
+      "Azure Service Bus",
+      "Azure Synapse Analytics",
+      "Data Factory",
+      "Synapse"
+    ],
+    "files": {
+      "pdf": "D:\\AI projects\\resume matcher project\\output\\Resume_Microsoft_Software_Engineer_II.pdf",
+      "docx": "D:\\AI projects\\resume matcher project\\output\\Resume_Microsoft_Software_Engineer_II.docx",
+      "markdown": "D:\\AI projects\\resume matcher project\\output\\Resume_Microsoft_Software_Engineer_II.md",
+      "interview_prep": null
+    }
+  },
+  {
     "id": "20261121_150710_Microsoft_Software_Engineer_II",
     "created_at": "2026-11-21 15:07:10",
     "candidate_name": "Shashwat Sahu",

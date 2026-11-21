@@ -262,16 +262,57 @@ with tab2:
         if profile_obj:
             st.info(f"👤 **Detected Candidate Profile:** `{anchors['recommended_title']}` | **Experience Level:** `{anchors['seniority']['label']}` (~{anchors['seniority']['years']} Yrs Exp) | **Core Stack:** {', '.join([f'`{s}`' for s in anchors['anchor_skills'][:4]])}")
 
-        col_s1, col_s2, col_s3, col_s4, col_s5 = st.columns([1.8, 1.1, 1.2, 1.4, 0.9])
+        col_s1, col_s2, col_s3, col_s4, col_s5 = st.columns([1.6, 1.3, 1.4, 1.3, 0.7])
         with col_s1:
             search_title = st.text_input("Target Role Title", value=anchors["recommended_title"])
         with col_s2:
-            search_loc = st.text_input("Location / City", value="Bengaluru")
+            cand_loc = (profile_obj.get("contact", {}).get("location") or "").lower()
+            loc_options = [
+                "Remote / Anywhere (Worldwide)",
+                "Remote (India)",
+                "Remote (US / Americas)",
+                "Remote (Europe / UK)",
+                "Bengaluru",
+                "Hyderabad",
+                "Pune",
+                "Delhi NCR / Gurgaon",
+                "Mumbai",
+                "San Francisco / Bay Area",
+                "New York, USA",
+                "London, UK",
+                "Custom Location..."
+            ]
+            default_idx = 0
+            if "remote" in cand_loc:
+                default_idx = 0
+            elif "bengaluru" in cand_loc or "bangalore" in cand_loc:
+                default_idx = 4
+            elif "hyderabad" in cand_loc:
+                default_idx = 5
+            elif "pune" in cand_loc:
+                default_idx = 6
+
+            loc_choice = st.selectbox(
+                "Location / Work Mode",
+                loc_options,
+                index=default_idx,
+                help="Select Remote to find 100% remote / work-from-home positions worldwide or by region."
+            )
+            if loc_choice == "Custom Location...":
+                search_loc = st.text_input("Enter City/Region", value="Bengaluru")
+            else:
+                search_loc = loc_choice
+
         with col_s3:
             search_portal = st.selectbox(
                 "Target ATS Board / Portal",
                 [
-                    "All Sources (MNCs + ATS + LinkedIn)",
+                    "All Sources (Remote + MNCs + ATS + LinkedIn)",
+                    "🌐 Remote Job Boards (WWR, RemoteOK, Wellfound, Remotive)",
+                    "We Work Remotely (WWR)",
+                    "RemoteOK",
+                    "Wellfound / AngelList",
+                    "Remotive",
                     "Top MNCs (Amazon, Microsoft, Google, Apple, Meta, Salesforce)",
                     "Amazon Careers",
                     "Microsoft Careers",
@@ -285,7 +326,7 @@ with tab2:
                     "Greenhouse (Stripe, Airbnb, Reddit)",
                     "Ashby (Notion, Linear, AI Unicorns)"
                 ],
-                help="Filters specifically for individual job postings on company career portals and enterprise ATS platforms."
+                help="Filter by dedicated remote platforms (We Work Remotely, RemoteOK, Wellfound), enterprise ATS boards, or top MNC career sites."
             )
         with col_s4:
             search_sen = st.selectbox(

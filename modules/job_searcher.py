@@ -256,14 +256,63 @@ class JobSearcher:
         using exact requisition-targeting queries to return individual postings only.
         """
         clean_role = re.sub(r"[^\w\s\+\#]", " ", role).strip()
-        loc_clause = f'"{location.strip()}"' if location.strip() else ""
+        loc_str = location.strip().lower()
+
+        # Handle Remote Location Variants
+        is_remote = False
+        if any(r in loc_str for r in ["remote", "work from home", "wfh", "anywhere", "telecommute"]):
+            is_remote = True
+            if "india" in loc_str:
+                loc_clause = '"remote" "India"'
+            elif "us" in loc_str or "america" in loc_str:
+                loc_clause = '"remote" "US"'
+            elif "europe" in loc_str or "uk" in loc_str:
+                loc_clause = '"remote" "Europe"'
+            else:
+                loc_clause = '"remote"'
+        else:
+            loc_clause = f'"{location.strip()}"' if location.strip() else ""
+
         skill_clause = f'"{anchor_skill.strip()}"' if anchor_skill.strip() else ""
 
         # Formulate precise queries that force search engines to return specific job requisitions
         board_queries = []
 
         tb_lower = target_board.lower()
-        if "top mnc" in tb_lower:
+        if "remote job board" in tb_lower or "all remote" in tb_lower or "remote boards" in tb_lower:
+            board_queries = [
+                ("We Work Remotely", f'{clean_role} site:weworkremotely.com/remote-jobs'),
+                ("RemoteOK", f'{clean_role} site:remoteok.com/remote-jobs'),
+                ("Wellfound", f'{clean_role} site:wellfound.com/jobs remote'),
+                ("Remotive", f'{clean_role} site:remotive.com/remote-jobs'),
+                ("Greenhouse", f'{clean_role} "remote" site:boards.greenhouse.io'),
+                ("Lever", f'{clean_role} "remote" site:jobs.lever.co'),
+                ("Ashby", f'{clean_role} "remote" site:jobs.ashbyhq.com'),
+                ("Workday", f'{clean_role} "remote" site:myworkdayjobs.com "/job/"'),
+                ("LinkedIn", f'{clean_role} "remote" site:linkedin.com/jobs/view')
+            ]
+        elif "we work remotely" in tb_lower or "wwr" in tb_lower:
+            board_queries = [
+                ("We Work Remotely", f'{clean_role} site:weworkremotely.com/remote-jobs'),
+                ("We Work Remotely", f'"{clean_role}" site:weworkremotely.com/remote-jobs'),
+                ("We Work Remotely", f'{clean_role} {skill_clause} site:weworkremotely.com/remote-jobs' if skill_clause else f'{clean_role} engineer site:weworkremotely.com/remote-jobs')
+            ]
+        elif "remoteok" in tb_lower:
+            board_queries = [
+                ("RemoteOK", f'{clean_role} site:remoteok.com/remote-jobs'),
+                ("RemoteOK", f'"{clean_role}" site:remoteok.com/remote-jobs')
+            ]
+        elif "wellfound" in tb_lower or "angellist" in tb_lower:
+            board_queries = [
+                ("Wellfound", f'{clean_role} site:wellfound.com/jobs remote'),
+                ("Wellfound", f'"{clean_role}" site:wellfound.com/jobs')
+            ]
+        elif "remotive" in tb_lower:
+            board_queries = [
+                ("Remotive", f'{clean_role} site:remotive.com/remote-jobs'),
+                ("Remotive", f'"{clean_role}" site:remotive.com/remote-jobs')
+            ]
+        elif "top mnc" in tb_lower:
             board_queries = [
                 ("Amazon", f'{clean_role} {loc_clause} site:amazon.jobs/en/jobs'),
                 ("Microsoft", f'{clean_role} {loc_clause} site:jobs.careers.microsoft.com'),
@@ -340,21 +389,38 @@ class JobSearcher:
                 ("LinkedIn", f'SDE {loc_clause} site:linkedin.com/jobs/view')
             ]
         else:
-            # All Sources: query each ATS host and top MNCs with individual requisition constraints
-            board_queries = [
-                ("Amazon", f'{clean_role} {loc_clause} site:amazon.jobs/en/jobs'),
-                ("Workday", f'{clean_role} {loc_clause} "Job Description" site:myworkdayjobs.com'),
-                ("Microsoft", f'{clean_role} {loc_clause} site:jobs.careers.microsoft.com'),
-                ("SmartRecruiters", f'{clean_role} {loc_clause} site:jobs.smartrecruiters.com'),
-                ("LinkedIn", f'{clean_role} {loc_clause} site:linkedin.com/jobs/view'),
-                ("Google", f'{clean_role} {loc_clause} "careers.google.com/jobs/results"'),
-                ("Apple", f'{clean_role} {loc_clause} site:jobs.apple.com details'),
-                ("Meta", f'{clean_role} {loc_clause} site:metacareers.com/jobs'),
-                ("Lever", f'{clean_role} {loc_clause} site:jobs.lever.co'),
-                ("Greenhouse", f'{clean_role} {loc_clause} site:boards.greenhouse.io'),
-                ("Workday", f'{clean_role} {loc_clause} site:myworkdayjobs.com "/job/"'),
-                ("Ashby", f'{clean_role} {loc_clause} site:jobs.ashbyhq.com')
-            ]
+            # All Sources: query each ATS host, remote boards, and top MNCs
+            if is_remote:
+                board_queries = [
+                    ("We Work Remotely", f'{clean_role} site:weworkremotely.com/remote-jobs'),
+                    ("RemoteOK", f'{clean_role} site:remoteok.com/remote-jobs'),
+                    ("Greenhouse", f'{clean_role} {loc_clause} site:boards.greenhouse.io'),
+                    ("Lever", f'{clean_role} {loc_clause} site:jobs.lever.co'),
+                    ("Ashby", f'{clean_role} {loc_clause} site:jobs.ashbyhq.com'),
+                    ("Wellfound", f'{clean_role} site:wellfound.com/jobs remote'),
+                    ("LinkedIn", f'{clean_role} {loc_clause} site:linkedin.com/jobs/view'),
+                    ("Workday", f'{clean_role} {loc_clause} site:myworkdayjobs.com "/job/"'),
+                    ("Amazon", f'{clean_role} {loc_clause} site:amazon.jobs/en/jobs'),
+                    ("Microsoft", f'{clean_role} {loc_clause} site:jobs.careers.microsoft.com'),
+                    ("Remotive", f'{clean_role} site:remotive.com/remote-jobs'),
+                    ("SmartRecruiters", f'{clean_role} {loc_clause} site:jobs.smartrecruiters.com')
+                ]
+            else:
+                board_queries = [
+                    ("Amazon", f'{clean_role} {loc_clause} site:amazon.jobs/en/jobs'),
+                    ("Workday", f'{clean_role} {loc_clause} "Job Description" site:myworkdayjobs.com'),
+                    ("Microsoft", f'{clean_role} {loc_clause} site:jobs.careers.microsoft.com'),
+                    ("SmartRecruiters", f'{clean_role} {loc_clause} site:jobs.smartrecruiters.com'),
+                    ("LinkedIn", f'{clean_role} {loc_clause} site:linkedin.com/jobs/view'),
+                    ("Google", f'{clean_role} {loc_clause} "careers.google.com/jobs/results"'),
+                    ("Apple", f'{clean_role} {loc_clause} site:jobs.apple.com details'),
+                    ("Meta", f'{clean_role} {loc_clause} site:metacareers.com/jobs'),
+                    ("Lever", f'{clean_role} {loc_clause} site:jobs.lever.co'),
+                    ("Greenhouse", f'{clean_role} {loc_clause} site:boards.greenhouse.io'),
+                    ("Workday", f'{clean_role} {loc_clause} site:myworkdayjobs.com "/job/"'),
+                    ("Ashby", f'{clean_role} {loc_clause} site:jobs.ashbyhq.com'),
+                    ("We Work Remotely", f'{clean_role} site:weworkremotely.com/remote-jobs')
+                ]
 
         candidates = []
         seen_urls = set()
@@ -746,6 +812,41 @@ class JobSearcher:
                 return True
             return False
 
+        # We Work Remotely: MUST have /remote-jobs/<slug>
+        if "weworkremotely.com" in url_lower:
+            if not re.search(r"weworkremotely\.com/remote-jobs/[a-zA-Z0-9\-]+", url_lower):
+                return False
+            if any(x in url_lower for x in ["/all-jobs", "/categories/", "-jobs-in-", "/advanced_search"]):
+                return False
+            slug = url_lower.split("/remote-jobs/")[-1].strip("/")
+            if not slug or slug in ["remote-jobs", "all-jobs"]:
+                return False
+            return True
+
+        # RemoteOK: MUST have numeric ID or /l/<id>
+        if "remoteok.com" in url_lower:
+            if re.search(r"remoteok\.com/(?:remote-jobs/[a-zA-Z0-9\-]+-\d+|l/\d+)", url_lower):
+                return True
+            return False
+
+        # Wellfound / AngelList: MUST have numeric job ID
+        if "wellfound.com" in url_lower or "angel.co" in url_lower:
+            if re.search(r"wellfound\.com/(?:jobs/\d+-[a-zA-Z0-9\-]+|company/[^/]+/jobs/\d+)", url_lower):
+                return True
+            return False
+
+        # Remotive: MUST have job slug with ID
+        if "remotive.com" in url_lower or "remotive.io" in url_lower:
+            if re.search(r"remotive\.(?:com|io)/remote-jobs/[^/]+/[a-zA-Z0-9\-]+-\d+", url_lower):
+                return True
+            return False
+
+        # Jobspresso
+        if "jobspresso.co" in url_lower:
+            if re.search(r"jobspresso\.co/job/[a-zA-Z0-9\-]+", url_lower):
+                return True
+            return False
+
         # Generic Career sites: must have specific job path segment
         if re.search(r"/(job|jobs|requisition|position)/\d+", url_lower):
             return True
@@ -769,6 +870,11 @@ class JobSearcher:
         cleaned = re.sub(r"\s*-\s*Google Careers.*$", "", cleaned, flags=re.I)
         cleaned = re.sub(r"\s*-\s*Jobs at Apple.*$", "", cleaned, flags=re.I)
         cleaned = re.sub(r"\s*\|\s*Meta Careers.*$", "", cleaned, flags=re.I)
+        cleaned = re.sub(r"\s*-\s*We\s*Work\s*Remotely.*$", "", cleaned, flags=re.I)
+        cleaned = re.sub(r"\s*-\s*Remotive.*$", "", cleaned, flags=re.I)
+        cleaned = re.sub(r"\s*-\s*RemoteOK.*$", "", cleaned, flags=re.I)
+        cleaned = re.sub(r"\s*•\s*Wellfound.*$", "", cleaned, flags=re.I)
+        cleaned = re.sub(r"\s*\|\s*Wellfound.*$", "", cleaned, flags=re.I)
 
         # Prepend or append verified MNC / ATS company names
         url_lower = url.lower()
