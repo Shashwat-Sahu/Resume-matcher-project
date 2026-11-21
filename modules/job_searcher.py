@@ -262,35 +262,75 @@ class JobSearcher:
         # Formulate precise queries that force search engines to return specific job requisitions
         board_queries = []
 
-        if target_board == "Lever":
+        tb_lower = target_board.lower()
+        if "top mnc" in tb_lower:
             board_queries = [
-                ("Lever", f'{clean_role} {loc_clause} site:jobs.lever.co'),
-                ("Lever", f'"{clean_role}" {loc_clause} site:jobs.lever.co'),
-                ("Lever", f'{clean_role} {skill_clause} site:jobs.lever.co' if skill_clause else f'{clean_role} site:jobs.lever.co')
+                ("Amazon", f'{clean_role} {loc_clause} site:amazon.jobs/en/jobs'),
+                ("Microsoft", f'{clean_role} {loc_clause} site:jobs.careers.microsoft.com'),
+                ("Google", f'{clean_role} {loc_clause} "careers.google.com/jobs/results"'),
+                ("Apple", f'{clean_role} {loc_clause} site:jobs.apple.com details'),
+                ("Meta", f'{clean_role} {loc_clause} site:metacareers.com/jobs'),
+                ("Workday", f'{clean_role} {loc_clause} site:salesforce.wd12.myworkdayjobs.com'),
+                ("Amazon", f'{clean_role} {loc_clause} site:amazon.jobs'),
+                ("Microsoft", f'{clean_role} {loc_clause} site:careers.microsoft.com "/job/"')
             ]
-        elif target_board == "Workday":
+        elif "amazon" in tb_lower:
+            board_queries = [
+                ("Amazon", f'{clean_role} {loc_clause} site:amazon.jobs/en/jobs'),
+                ("Amazon", f'{clean_role} {loc_clause} site:amazon.jobs'),
+                ("Amazon", f'"{clean_role}" {loc_clause} site:amazon.jobs')
+            ]
+        elif "microsoft" in tb_lower:
+            board_queries = [
+                ("Microsoft", f'{clean_role} {loc_clause} site:jobs.careers.microsoft.com'),
+                ("Microsoft", f'{clean_role} {loc_clause} site:careers.microsoft.com "/job/"'),
+                ("Microsoft", f'"{clean_role}" {loc_clause} site:careers.microsoft.com')
+            ]
+        elif "google" in tb_lower:
+            board_queries = [
+                ("Google", f'{clean_role} {loc_clause} "careers.google.com/jobs/results"'),
+                ("Google", f'{clean_role} {loc_clause} site:google.com "about/careers"'),
+                ("Google", f'"{clean_role}" {loc_clause} site:careers.google.com')
+            ]
+        elif "apple" in tb_lower:
+            board_queries = [
+                ("Apple", f'{clean_role} {loc_clause} site:jobs.apple.com details'),
+                ("Apple", f'"{clean_role}" {loc_clause} site:jobs.apple.com')
+            ]
+        elif "meta" in tb_lower:
+            board_queries = [
+                ("Meta", f'{clean_role} {loc_clause} site:metacareers.com/jobs'),
+                ("Meta", f'"{clean_role}" {loc_clause} site:metacareers.com')
+            ]
+        elif "smartrecruiters" in tb_lower:
+            board_queries = [
+                ("SmartRecruiters", f'{clean_role} {loc_clause} site:jobs.smartrecruiters.com'),
+                ("SmartRecruiters", f'"{clean_role}" {loc_clause} site:jobs.smartrecruiters.com')
+            ]
+        elif "workday" in tb_lower:
             board_queries = [
                 ("Workday", f'{clean_role} {loc_clause} "Job Description" site:myworkdayjobs.com'),
                 ("Workday", f'{clean_role} {loc_clause} site:myworkdayjobs.com "/job/"'),
                 ("Workday", f'"{clean_role}" {loc_clause} "Job Description" site:myworkdayjobs.com')
             ]
-        elif target_board == "Greenhouse":
+        elif "greenhouse" in tb_lower:
             board_queries = [
                 ("Greenhouse", f'{clean_role} {loc_clause} site:boards.greenhouse.io'),
                 ("Greenhouse", f'"{clean_role}" {loc_clause} site:boards.greenhouse.io'),
                 ("Greenhouse", f'{clean_role} {loc_clause} site:job-boards.greenhouse.io')
             ]
-        elif target_board == "SmartRecruiters":
+        elif "lever" in tb_lower:
             board_queries = [
-                ("SmartRecruiters", f'{clean_role} {loc_clause} site:jobs.smartrecruiters.com'),
-                ("SmartRecruiters", f'"{clean_role}" {loc_clause} site:jobs.smartrecruiters.com')
+                ("Lever", f'{clean_role} {loc_clause} site:jobs.lever.co'),
+                ("Lever", f'"{clean_role}" {loc_clause} site:jobs.lever.co'),
+                ("Lever", f'{clean_role} {skill_clause} site:jobs.lever.co' if skill_clause else f'{clean_role} site:jobs.lever.co')
             ]
-        elif target_board == "Ashby":
+        elif "ashby" in tb_lower:
             board_queries = [
                 ("Ashby", f'{clean_role} {loc_clause} site:jobs.ashbyhq.com'),
                 ("Ashby", f'"{clean_role}" {loc_clause} site:jobs.ashbyhq.com')
             ]
-        elif target_board == "LinkedIn (Single View)":
+        elif "linkedin" in tb_lower:
             board_queries = [
                 ("LinkedIn", f'{clean_role} {loc_clause} site:linkedin.com/jobs/view'),
                 ("LinkedIn", f'"{clean_role}" {loc_clause} site:linkedin.com/jobs/view'),
@@ -300,17 +340,19 @@ class JobSearcher:
                 ("LinkedIn", f'SDE {loc_clause} site:linkedin.com/jobs/view')
             ]
         else:
-            # All Sources: query each ATS host with individual requisition constraints
+            # All Sources: query each ATS host and top MNCs with individual requisition constraints
             board_queries = [
+                ("Amazon", f'{clean_role} {loc_clause} site:amazon.jobs/en/jobs'),
                 ("Workday", f'{clean_role} {loc_clause} "Job Description" site:myworkdayjobs.com'),
+                ("Microsoft", f'{clean_role} {loc_clause} site:jobs.careers.microsoft.com'),
+                ("SmartRecruiters", f'{clean_role} {loc_clause} site:jobs.smartrecruiters.com'),
                 ("LinkedIn", f'{clean_role} {loc_clause} site:linkedin.com/jobs/view'),
+                ("Google", f'{clean_role} {loc_clause} "careers.google.com/jobs/results"'),
+                ("Apple", f'{clean_role} {loc_clause} site:jobs.apple.com details'),
+                ("Meta", f'{clean_role} {loc_clause} site:metacareers.com/jobs'),
                 ("Lever", f'{clean_role} {loc_clause} site:jobs.lever.co'),
                 ("Greenhouse", f'{clean_role} {loc_clause} site:boards.greenhouse.io'),
-                ("SmartRecruiters", f'{clean_role} {loc_clause} site:jobs.smartrecruiters.com'),
-                ("LinkedIn", f'{clean_role} {loc_clause} site:in.linkedin.com/jobs/view'),
                 ("Workday", f'{clean_role} {loc_clause} site:myworkdayjobs.com "/job/"'),
-                ("Lever", f'"{clean_role}" {loc_clause} site:jobs.lever.co'),
-                ("Greenhouse", f'"{clean_role}" {loc_clause} site:boards.greenhouse.io'),
                 ("Ashby", f'{clean_role} {loc_clause} site:jobs.ashbyhq.com')
             ]
 
@@ -674,6 +716,36 @@ class JobSearcher:
                 return True
             return False
 
+        # Amazon Careers: MUST have /jobs/<id>
+        if "amazon.jobs" in url_lower:
+            if re.search(r"amazon\.jobs/(?:[^/]+/)*jobs/\d+", url_lower):
+                return True
+            return False
+
+        # Microsoft Careers: MUST have /job/<id> or /share/<id>
+        if "careers.microsoft.com" in url_lower:
+            if re.search(r"careers\.microsoft\.com/(?:[^/]+/)*(?:job|share)/\d+", url_lower):
+                return True
+            return False
+
+        # Google Careers: MUST have /jobs/results/<id>
+        if "google.com/about/careers" in url_lower or "careers.google.com" in url_lower:
+            if re.search(r"(?:google\.com/about/careers/applications/jobs/results|careers\.google\.com/jobs/results)/\d+", url_lower):
+                return True
+            return False
+
+        # Apple Jobs: MUST have /details/<id>
+        if "jobs.apple.com" in url_lower:
+            if re.search(r"jobs\.apple\.com/(?:[^/]+/)*details/\d+", url_lower):
+                return True
+            return False
+
+        # Meta Careers: MUST have /jobs/<id>
+        if "metacareers.com" in url_lower or "careers.facebook.com" in url_lower:
+            if re.search(r"(?:metacareers|careers\.facebook)\.com/jobs/\d+", url_lower):
+                return True
+            return False
+
         # Generic Career sites: must have specific job path segment
         if re.search(r"/(job|jobs|requisition|position)/\d+", url_lower):
             return True
@@ -689,10 +761,28 @@ class JobSearcher:
         cleaned = re.sub(r"\s*-\s*myworkdayjobs\.com.*$", "", cleaned, flags=re.I)
         cleaned = re.sub(r"\s*-\s*job-boards\..*$", "", cleaned, flags=re.I)
         cleaned = re.sub(r"\s*-\s*SmartRecruiters.*$", "", cleaned, flags=re.I)
+        cleaned = re.sub(r"\s*\|\s*SmartRecruiters.*$", "", cleaned, flags=re.I)
         cleaned = re.sub(r"\s*-\s*Logo$", "", cleaned, flags=re.I)
+        cleaned = re.sub(r"\s*-\s*Job ID:\s*\d+.*$", "", cleaned, flags=re.I)
+        cleaned = re.sub(r"\s*\|\s*Microsoft Careers.*$", "", cleaned, flags=re.I)
+        cleaned = re.sub(r"\s*-\s*jobs\.careers\.microsoft\.com.*$", "", cleaned, flags=re.I)
+        cleaned = re.sub(r"\s*-\s*Google Careers.*$", "", cleaned, flags=re.I)
+        cleaned = re.sub(r"\s*-\s*Jobs at Apple.*$", "", cleaned, flags=re.I)
+        cleaned = re.sub(r"\s*\|\s*Meta Careers.*$", "", cleaned, flags=re.I)
 
-        # If title is generic or company subdomain is known, prepend company
-        if "myworkdayjobs.com" in url.lower():
+        # Prepend or append verified MNC / ATS company names
+        url_lower = url.lower()
+        if "amazon.jobs" in url_lower and "amazon" not in cleaned.lower():
+            cleaned = f"{cleaned} at Amazon"
+        elif "careers.microsoft.com" in url_lower and "microsoft" not in cleaned.lower():
+            cleaned = f"{cleaned} at Microsoft"
+        elif ("careers.google.com" in url_lower or "google.com/about/careers" in url_lower) and "google" not in cleaned.lower():
+            cleaned = f"{cleaned} at Google"
+        elif "jobs.apple.com" in url_lower and "apple" not in cleaned.lower():
+            cleaned = f"{cleaned} at Apple"
+        elif ("metacareers.com" in url_lower or "careers.facebook.com" in url_lower) and "meta" not in cleaned.lower():
+            cleaned = f"{cleaned} at Meta"
+        elif "myworkdayjobs.com" in url_lower:
             match = re.search(r"https?://([^.]+)\.[^/]*myworkdayjobs\.com", url, re.I)
             if match:
                 company_name = match.group(1).title()

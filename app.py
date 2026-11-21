@@ -269,9 +269,23 @@ with tab2:
             search_loc = st.text_input("Location / City", value="Bengaluru")
         with col_s3:
             search_portal = st.selectbox(
-                "Target ATS Board",
-                ["All Sources", "LinkedIn (Single View)", "Workday", "Lever", "Greenhouse", "SmartRecruiters", "Ashby"],
-                help="Filters specifically for individual job postings rather than search result directory aggregators."
+                "Target ATS Board / Portal",
+                [
+                    "All Sources (MNCs + ATS + LinkedIn)",
+                    "Top MNCs (Amazon, Microsoft, Google, Apple, Meta, Salesforce)",
+                    "Amazon Careers",
+                    "Microsoft Careers",
+                    "Google Careers",
+                    "Apple Careers",
+                    "Meta Careers",
+                    "Workday (Salesforce, Visa, HPE, Cisco, Adobe)",
+                    "LinkedIn (Single View)",
+                    "SmartRecruiters (PhonePe, Smiths Group)",
+                    "Lever (Figma, Netflix, Postman)",
+                    "Greenhouse (Stripe, Airbnb, Reddit)",
+                    "Ashby (Notion, Linear, AI Unicorns)"
+                ],
+                help="Filters specifically for individual job postings on company career portals and enterprise ATS platforms."
             )
         with col_s4:
             search_sen = st.selectbox(
